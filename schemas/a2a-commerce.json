@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NexusOS A2A Commerce Protocol",
+  "description": "JSON Schema for Agent-to-Agent commerce communication. Customer AI agents use this to negotiate purchases with NexusOS.",
+  "version": "1.0",
+  "protocol": "nexusos-a2a/1.0",
+  "definitions": {
+    "QueryConstraints": {
+      "type": "object",
+      "description": "Buyer constraints on the desired product",
+      "properties": {
+        "max_price_usd":      { "type": "number", "minimum": 0, "description": "Maximum acceptable unit price in USD" },
+        "required_tags":      { "type": "array", "items": { "type": "string" }, "description": "Product tags that must be present" },
+        "max_shipping_days":  { "type": "integer", "minimum": 1, "description": "Maximum acceptable delivery days" },
+        "preferred_currency": { "type": "string", "enum": ["USD", "EUR", "GBP", "CAD"], "default": "USD" },
+        "b2b":                { "type": "boolean", "description": "True for B2B / bulk corporate purchase" }
+      }
+    },
+    "ProductMatch": {
+      "type": "object",
+      "description": "A matched product included in an Offer",
+      "required": ["product_id", "title", "price_usd", "final_price_usd", "inventory_available", "estimated_shipping_days"],
+      "properties": {
+        "product_id":              { "type": "string" },
+        "title":                   { "type": "string" },
+        "price_usd":               { "type": "number", "minimum": 0 },
+        "discount_pct":            { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+        "final_price_usd":         { "type": "number", "minimum": 0 },
+        "inventory_available":     { "type": "integer", "minimum": 0 },
+        "estimated_shipping_days": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "messages": {
+    "ProductQuery": {
+      "description": "Step 1: Customer AI agent sends a purchase intent",
+      "type": "object",
+      "required": ["agent_id", "query"],
+      "properties": {
+        "agent_id":    { "type": "string", "description": "Unique ID of the customer AI agent" },
+        "agent_type":  { "type": "string", "examples": ["google-shopping-agent", "perplexity-buyer", "autogen-corporate"] },
+        "session_id":  { "type": "string", "description": "Negotiation session ID (assigned by NexusOS if omitted)" },
+        "query":       { "type": "string", "description": "Natural language purchase intent" },
+        "constraints": { "$ref": "#/definitions/QueryConstraints" },
+        "quantity":    { "type": "integer", "minimum": 1, "default": 1 }
+      }
+    },
+    "Offer": {
+      "description": "Step 2: NexusOS responds with available products and pricing",
+      "type": "object",
+      "required": ["offer_id", "session_id", "products", "expires_at", "protocol"],
+      "properties": {
+        "offer_id":         { "type": "string", "format": "uuid" },
+        "session_id":       { "type": "string" },
+        "products":         { "type": "array", "items": { "$ref": "#/definitions/ProductMatch" } },
+        "expires_at":       { "type": "string", "format": "date-time", "description": "Offer is valid until this UTC timestamp (typically 15 min)" },
+        "negotiation_url":  { "type": "string", "format": "uri", "description": "URL to send a CounterOffer to" },
+        "protocol":         { "type": "string", "const": "nexusos-a2a/1.0" },
+        "message":          { "type": "string", "description": "Optional human-readable note (e.g. bulk discount info)" }
+      }
+    },
+    "CounterOffer": {
+      "description": "Step 3 (optional): Customer agent negotiates different terms",
+      "type": "object",
+      "required": ["offer_id", "session_id", "agent_id"],
+      "properties": {
+        "offer_id":        { "type": "string", "format": "uuid", "description": "The Offer being countered" },
+        "session_id":      { "type": "string" },
+        "agent_id":        { "type": "string" },
+        "proposed_price":  { "type": "number", "minimum": 0 },
+        "reason":          { "type": "string", "examples": ["Competitor price is $89", "Loyalty discount requested"] }
+      }
+    },
+    "Contract": {
+      "description": "Step 4: Accepted offer becomes a binding purchase contract",
+      "type": "object",
+      "required": ["contract_id", "session_id", "offer_id", "agent_id", "products", "total_usd", "status", "created_at"],
+      "properties": {
+        "contract_id":  { "type": "string", "format": "uuid" },
+        "session_id":   { "type": "string" },
+        "offer_id":     { "type": "string", "format": "uuid" },
+        "agent_id":     { "type": "string" },
+        "products":     { "type": "array", "items": { "$ref": "#/definitions/ProductMatch" } },
+        "total_usd":    { "type": "number", "minimum": 0 },
+        "status":       { "type": "string", "enum": ["accepted", "pending_payment", "paid", "cancelled"] },
+        "created_at":   { "type": "string", "format": "date-time" },
+        "payment_url":  { "type": "string", "format": "uri" }
+      }
+    }
+  },
+  "flow": [
+    "POST /api/v1/agent/negotiate  →  ProductQuery  →  Offer",
+    "POST /api/v1/agent/negotiate  →  CounterOffer  →  Offer (revised)",
+    "POST /api/v1/agent/negotiate  →  (accept Offer) → Contract"
+  ]
+}

@@ -1,0 +1,7 @@
+dynamicconfig:
+  frontend.enableUpdateWorkflowExecutionInfo:
+    - value: true
+  system.enableActivityEagerExecution:
+    - value: true
+  limit.maxIDLengthWarnLimit:
+    - value: 0

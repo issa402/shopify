@@ -1,0 +1,29 @@
+# Environment variables (NEVER push these)
+.env
+.env.local
+.env.production
+.env.development
+
+# Node
+node_modules/
+dist/
+.next/
+build/
+.turbo/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker
+.docker/
+
+# Misc
+.cache/
+*.tsbuildinfo

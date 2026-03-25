@@ -1,0 +1,147 @@
+version: "3.9"
+
+services:
+  # ─── PostgreSQL with pgvector ──────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: nexusos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nexusos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexusos_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-nexusos}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./services/gateway/internal/db/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexusos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis (idempotency keys, session cache) ───────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: nexusos-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Qdrant (Vector DB for RAG & Memory) ──────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: nexusos-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ─── Zookeeper (required by Kafka) ────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.7.0
+    container_name: nexusos-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+
+  # ─── Kafka (event streaming for webhook buffering) ─────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.7.0
+    container_name: nexusos-kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ─── Ollama (Local AI — Llama 3 8B for cheap tasks) ───────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: nexusos-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Pull Llama3 8B on first start
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 10 && ollama pull llama3:8b && wait"]
+
+  # ─── Temporal (Reliable long-running agent workflows) ─────────────────────
+  temporal:
+    image: temporalio/auto-setup:1.24
+    container_name: nexusos-temporal
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-nexusos}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:-nexusos_pass}
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/config/dynamicconfig.yaml
+    ports:
+      - "7233:7233"
+    volumes:
+      - ./config/temporal:/etc/temporal/config
+
+  # ─── Temporal UI ──────────────────────────────────────────────────────────
+  temporal-ui:
+    image: temporalio/ui:2.28.0
+    container_name: nexusos-temporal-ui
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "8088:8080"
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  zookeeper_data:
+  kafka_data:
+  ollama_data:
+
+networks:
+  default:
+    name: nexusos-network

@@ -1,0 +1,28 @@
+{
+  "name": "@nexusos/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite --port 3000",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "@shopify/polaris": "^13.0.0",
+    "@shopify/polaris-icons": "^9.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.27.0",
+    "recharts": "^2.13.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.8",
+    "vitest": "^2.1.2"
+  }
+}

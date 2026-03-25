@@ -1,0 +1,24 @@
+{
+  "name": "nexusos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NexusOS 2026 — Autonomous Commerce Infrastructure for Shopify",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

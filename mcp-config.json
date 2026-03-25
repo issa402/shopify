@@ -1,0 +1,45 @@
+{
+  "version": "1.0",
+  "mcpServers": {
+    "slack": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-slack"],
+      "env": {
+        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}"
+      },
+      "description": "Slack connector — read/write channels, DMs, and threads",
+      "tools": ["list_channels", "post_message", "read_messages", "search"]
+    },
+    "google-drive": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-gdrive"],
+      "env": {
+        "GDRIVE_CREDENTIALS": "${GOOGLE_DRIVE_CREDENTIALS_FILE}"
+      },
+      "description": "Google Drive connector — read/write docs, sheets, and files",
+      "tools": ["list_files", "read_file", "create_file", "update_file", "search_files"]
+    },
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL}"],
+      "description": "Direct Postgres query access for agents",
+      "tools": ["query", "list_tables", "describe_table"]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./data"],
+      "description": "Local filesystem access for agent file operations",
+      "tools": ["read_file", "write_file", "list_directory"]
+    }
+  },
+  "nexusos": {
+    "defaultServers": ["postgres", "filesystem"],
+    "optionalServers": ["slack", "google-drive"],
+    "agentPermissions": {
+      "SupportAgent": ["slack", "postgres", "filesystem"],
+      "LogisticsAgent": ["postgres", "filesystem"],
+      "FinanceAgent": ["postgres"],
+      "NegotiationAgent": ["postgres"]
+    }
+  }
+}
