@@ -335,6 +335,7 @@ result = subprocess.run(
 running_containers = result.stdout.strip().split('\n')
 
 # Handle failure explicitly
+
 try:
     result = subprocess.run(
         ["systemctl", "restart", "pokevend"],
@@ -436,6 +437,7 @@ import json
 import urllib.request
 
 # Read a JSON config file
+
 with open("config.json", "r") as f:
     config = json.load(f)
     db_url = config["database"]["url"]
@@ -464,6 +466,7 @@ import logging
 import sys
 
 # Configure logging early in your script
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",

@@ -7,6 +7,148 @@ Goal:
 - Practice the exact skills the job asks for
 - Stay project-based instead of falling into tutorial hell
 
+RESOURCES:
+Core map
+Use this as your bird’s-eye roadmap:
+
+roadmap.sh DevOps roadmap
+roadmap.sh main site
+Bash / Linux CLI
+For getting cracked at Bash, these are the best free ones:
+
+MIT Missing Semester: Shell
+Wooledge BashGuide
+Linux Journey
+The Linux Command Line
+Best approach:
+
+Missing Semester first for intuition
+Linux Journey for coverage
+BashGuide for writing correct scripts
+Windows + Linux administration
+Because this role is both environments:
+
+Microsoft Learn: Windows Server Administration Fundamentals
+Linux Journey
+Cloud
+You do not need to become a cloud wizard in 4 months. You do need solid fundamentals.
+
+AWS Skill Builder free training
+Microsoft Learn Azure training
+Azure Well-Architected Framework
+AWS Well-Architected Security Pillar
+Infrastructure as Code
+This is huge for infra intuition:
+
+Terraform tutorials
+Terraform CLI tutorials
+Terraform configuration tutorials
+Containers / orchestration
+Even if the job doesn’t explicitly say Kubernetes, knowing containerized ops gives you strong infra intuition:
+
+Kubernetes Basics
+Kubernetes Concepts
+Monitoring / observability / incident response
+This is one of the most important categories for this role:
+
+Google SRE Workbook
+Google SRE site
+Prometheus getting started
+Google Cloud reliability pillar
+If you want intuition for what infra people actually think about, the SRE Workbook is probably the single best read.
+
+Networking
+You do not need CCIE-level networking. You need practical infra networking:
+
+IPs
+subnets
+routing
+DNS
+ports
+TLS
+firewalls
+load balancers
+NAT
+VPN basics
+packet path intuition
+Good free starts:
+
+Cisco Networking Basics overview
+Cisco Networking Academy / free courses
+Linux Journey networking section
+Security
+For this role, learn practical security, not hacker-movie security:
+
+IAM / least privilege
+secure config
+patching
+segmentation
+secrets
+endpoint security
+logging
+incident response basics
+Best free resources:
+
+Microsoft Learn IAM fundamentals
+Microsoft Learn basic identity and access tasks
+Azure security architecture quick links
+AWS Well-Architected security
+OWASP Top 10
+CI/CD and automation
+Infra engineers touch delivery pipelines a lot:
+
+GitHub Actions docs
+Understanding GitHub Actions
+Agile / collaboration / project tracking
+This matters because the role explicitly mentions agile and stakeholders:
+
+Atlassian Agile tutorials
+
+
+That is how you build intuition: every time you add a feature, ask “how would an infra engineer make this safer to run?”
+
+For the exact bullets you pasted, the strongest intuition-building mapping is this:
+
+Business/platform expertise:
+Learn cloud fundamentals + architecture + how business systems depend on infra.
+Best resources: Azure Well-Architected, AWS Well-Architected Security Pillar, Google Cloud reliability pillar
+
+Design/develop/implement/optimize infrastructure solutions:
+Learn IaC, containers, deployment patterns, reliability.
+Best resources: Terraform tutorials, Kubernetes Basics, Google SRE Workbook
+
+Collaborate with stakeholders:
+Learn to write clear docs and explain tradeoffs.
+Best resource: Atlassian Agile tutorials
+
+Track deliverables in agile:
+Learn issue breakdown, sprint thinking, operational priorities.
+Best resource: Atlassian Agile tutorials
+
+Document designs/processes:
+Practice docs in your own repo. No course beats doing this.
+
+Design scalable, reliable, lower-risk platforms:
+Best resources: Google SRE Workbook, Azure Well-Architected, Google Cloud reliability pillar
+
+Investigate events / resolve defects:
+Learn logs, metrics, alerting, troubleshooting.
+Best resources: Prometheus getting started, Linux Journey, Google SRE Workbook
+
+And for the qualifications:
+
+Scripting: MIT Missing Semester, BashGuide
+Cloud: AWS Skill Builder, Microsoft Learn Azure
+Windows/Linux: Windows Server fundamentals, Linux Journey
+Security: Microsoft IAM fundamentals, AWS security pillar, OWASP Top 10
+Networking: Cisco networking basics, Cisco Networking Academy
+Troubleshooting: Prometheus getting started, Linux Journey
+If you want a YouTube/video angle, I wouldn’t rely on one mega-video for everything. The better combo is:
+
+MIT Missing Semester videos
+Google Cloud Tech: actionable alerting / SRE video
+Cloud Advocate: SRE for Google Cloud DevOps Engineer
+
 How to use this file:
 - Do the tasks in order
 - Do not copy code from me
