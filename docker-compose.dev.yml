@@ -1,0 +1,98 @@
+# This compose file runs app services in containers so host dependencies stay clean.
+services:
+  # The web service runs Vite with Node dependencies installed inside the image.
+  web:
+    # Build from the dev Dockerfile that performs container-local npm install.
+    build:
+      # The web build context is scoped to the frontend package.
+      context: ./apps/web
+      # The dev Dockerfile is separate from any production image.
+      dockerfile: Dockerfile.dev
+    # The source mount gives Vite live reload without mounting host node_modules.
+    volumes:
+      # Mount only frontend source files that developers edit.
+      - ./apps/web/src:/workspace/apps/web/src
+      # Mount the static HTML entrypoint for Vite.
+      - ./apps/web/index.html:/workspace/apps/web/index.html
+      # Mount Vite config so proxy changes reload in the container.
+      - ./apps/web/vite.config.ts:/workspace/apps/web/vite.config.ts
+      # Mount TypeScript config for containerized type checking.
+      - ./apps/web/tsconfig.json:/workspace/apps/web/tsconfig.json
+      # Mount Node TypeScript config for Vite tooling.
+      - ./apps/web/tsconfig.node.json:/workspace/apps/web/tsconfig.node.json
+    # Port 3000 serves the merchant/admin frontend locally.
+    ports:
+      - "3000:3000"
+    # The web UI depends on the gateway API for proxied /api requests.
+    depends_on:
+      - gateway
+
+  # The gateway service runs Go inside Docker so the host snap Go issue is avoided.
+  gateway:
+    # Build from the dev Dockerfile that performs container-local go mod download.
+    build:
+      # The gateway build context is scoped to the Go service.
+      context: ./services/gateway
+      # The dev Dockerfile is separate from any production image.
+      dockerfile: Dockerfile.dev
+    # The source mount gives go run the current code without host Go tooling.
+    volumes:
+      # Mount gateway source files for live development.
+      - ./services/gateway:/workspace/services/gateway
+      # Mount MCP config at the path main.go expects.
+      - ./mcp-config.json:/workspace/services/gateway/mcp-config.json
+    # These env vars point containers at compose service names, not localhost.
+    environment:
+      # The gateway connects to Postgres over the compose network.
+      DATABASE_URL: postgres://nexusos:nexusos_pass@postgres:5432/nexusos?sslmode=disable
+      # Kafka uses its internal listener between containers.
+      KAFKA_BROKERS: kafka:29092
+      # The Go service listens on its default API port.
+      PORT_GATEWAY: "8080"
+      # The app should target Shopify's latest stable Admin API on May 1, 2026.
+      SHOPIFY_API_VERSION: "2026-04"
+    # Port 8080 exposes the gateway API to the browser and local tools.
+    ports:
+      - "8080:8080"
+    # The gateway needs database and Kafka infrastructure before it starts.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  # The AI service runs Python dependencies inside Docker instead of a host venv.
+  ai:
+    # Build from the dev Dockerfile that performs container-local pip install.
+    build:
+      # The AI build context is scoped to the Python service.
+      context: ./services/ai
+      # The dev Dockerfile is separate from any production image.
+      dockerfile: Dockerfile.dev
+    # The source mount enables FastAPI reload without host Python packages.
+    volumes:
+      # Mount the AI service source package.
+      - ./services/ai:/workspace/services/ai
+    # These env vars connect AI to compose infrastructure and current Shopify API.
+    environment:
+      # The AI service listens on its default API port.
+      PORT_AI: "8000"
+      # Qdrant is reachable by compose service name.
+      QDRANT_URL: http://qdrant:6333
+      # Kafka uses its internal listener between containers.
+      KAFKA_BROKER: kafka:29092
+      # Ollama is reachable by compose service name.
+      OLLAMA_BASE_URL: http://ollama:11434
+      # The app should target Shopify's latest stable Admin API on May 1, 2026.
+      SHOPIFY_API_VERSION: "2026-04"
+      # The frontend origin is explicit so CORS does not rely on a wildcard.
+      FRONTEND_URL: http://localhost:3000
+    # Port 8000 exposes FastAPI docs and AI endpoints locally.
+    ports:
+      - "8000:8000"
+    # The AI service needs vector DB and Kafka for full event/RAG behavior.
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy

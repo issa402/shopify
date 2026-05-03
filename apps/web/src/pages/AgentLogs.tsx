@@ -1,7 +1,7 @@
 import {
-  Page, Layout, LegacyCard, DataTable, Badge, Text,
-  BlockStack, Filters, Button, EmptyState, Tabs,
-  InlineGrid, Box,
+  Page, Layout, Card, DataTable, Badge, Text,
+  BlockStack, Tabs,
+  InlineGrid,
 } from '@shopify/polaris'
 import { useState } from 'react'
 
@@ -20,7 +20,7 @@ const agentDecisions = [
   {
     id: 'dec_002',
     agent: 'LogisticsAgent',
-    action: 'Drafted PO for Supplier XYZ — 200 units',
+    action: 'Drafted PO for Supplier XYZ - 200 units',
     order: 'N/A',
     customer: 'N/A',
     model: 'claude-3-5-sonnet',
@@ -31,7 +31,7 @@ const agentDecisions = [
   {
     id: 'dec_003',
     agent: 'FinanceAgent',
-    action: 'Rejected refund request — margin below 15%',
+    action: 'Rejected refund request - margin below 15%',
     order: '#10225',
     customer: 'David Park',
     model: 'claude-3-5-sonnet',
@@ -63,7 +63,7 @@ const outcomeBadge = (outcome: string) => {
 }
 
 const modelBadge = (model: string) => {
-  if (model.includes('ollama')) return <Badge tone="success">🆓 Local</Badge>
+  if (model.includes('ollama')) return <Badge tone="success">Local</Badge>
   if (model.includes('claude')) return <Badge tone="info">Claude</Badge>
   return <Badge>GPT-4</Badge>
 }
@@ -97,40 +97,40 @@ export default function AgentLogs() {
         {/* Stats row */}
         <Layout.Section>
           <InlineGrid columns={3} gap="400">
-            <LegacyCard sectioned>
+            <Card>
               <BlockStack gap="100">
                 <Text variant="bodySm" tone="subdued" as="p">Total Actions Today</Text>
                 <Text variant="headingXl" as="p">61</Text>
                 <Text variant="bodySm" tone="success" as="p">↑ 60% above average</Text>
               </BlockStack>
-            </LegacyCard>
-            <LegacyCard sectioned>
+            </Card>
+            <Card>
               <BlockStack gap="100">
                 <Text variant="bodySm" tone="subdued" as="p">Actions via Local AI (Free)</Text>
                 <Text variant="headingXl" as="p">72%</Text>
                 <Text variant="bodySm" tone="success" as="p">Saving ~$3.20 vs all-API</Text>
               </BlockStack>
-            </LegacyCard>
-            <LegacyCard sectioned>
+            </Card>
+            <Card>
               <BlockStack gap="100">
                 <Text variant="bodySm" tone="subdued" as="p">Autonomous Resolution Rate</Text>
                 <Text variant="headingXl" as="p">89%</Text>
                 <Text variant="bodySm" tone="success" as="p">11% escalated to human</Text>
               </BlockStack>
-            </LegacyCard>
+            </Card>
           </InlineGrid>
         </Layout.Section>
 
         {/* Decision log */}
         <Layout.Section>
-          <LegacyCard>
+          <Card>
             <Tabs tabs={tabs} selected={selected} onSelect={setSelected} />
             <DataTable
               columnContentTypes={['text', 'text', 'text', 'text', 'text', 'numeric', 'text']}
               headings={['Time', 'Agent', 'Action Taken', 'Order', 'Model', 'Cost', 'Outcome']}
               rows={rows}
             />
-          </LegacyCard>
+          </Card>
         </Layout.Section>
       </Layout>
     </Page>

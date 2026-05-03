@@ -1,0 +1,14 @@
+# This image keeps Go tooling and module cache inside Docker instead of using host Go.
+FROM golang:1.22-bookworm
+
+# This working directory is the isolated gateway folder inside the container.
+WORKDIR /workspace/services/gateway
+
+# This copy lets Docker cache Go module downloads even when go.sum is not committed yet.
+COPY go.mod ./
+
+# This download is intentionally container-local, so Go modules stay off the host.
+RUN go mod download
+
+# This command runs the gateway from mounted source during development.
+CMD ["go", "run", "./main.go"]

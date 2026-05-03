@@ -1,0 +1,14 @@
+# This image keeps Node dependencies inside Docker instead of on the host machine.
+FROM node:20-bookworm-slim
+
+# This working directory is the isolated app folder inside the container.
+WORKDIR /workspace/apps/web
+
+# This copy lets Docker cache dependency installs until package metadata changes.
+COPY package.json ./
+
+# This install is intentionally container-local, so node_modules stays off the host.
+RUN npm install --no-audit --no-fund
+
+# This command starts Vite on every interface so the browser can reach the container.
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

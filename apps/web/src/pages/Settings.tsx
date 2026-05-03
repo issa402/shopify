@@ -1,15 +1,21 @@
 import {
-  Page, Layout, LegacyCard, SettingToggle, Text, Badge,
+  Page, Layout, Card, Checkbox, Text, Badge,
   BlockStack, TextField, Button, InlineStack, Divider,
-  CalloutCard, Banner,
+  Banner,
 } from '@shopify/polaris'
 import { useState } from 'react'
 
+const shopifyApiVersion = '2026-04'
+
 const mcpServers = [
-  { id: 'postgres', name: 'PostgreSQL', description: 'Direct database access for agents', icon: '🗄️', connected: true },
-  { id: 'filesystem', name: 'File System', description: 'Local file read/write for agents', icon: '📁', connected: true },
-  { id: 'slack', name: 'Slack', description: 'Send messages, read channels', icon: '💬', connected: false },
-  { id: 'google-drive', name: 'Google Drive', description: 'Read/write docs and sheets', icon: '📊', connected: false },
+  // PostgreSQL is connected first because agents need merchant data context.
+  { id: 'postgres', name: 'PostgreSQL', description: 'Direct database access for agents', connected: true },
+  // Filesystem access is useful for generated reports and local operational docs.
+  { id: 'filesystem', name: 'File System', description: 'Local file read/write for agents', connected: true },
+  // Slack starts disconnected until the merchant authorizes workspace access.
+  { id: 'slack', name: 'Slack', description: 'Send messages, read channels', connected: false },
+  // Google Drive starts disconnected until OAuth credentials are configured.
+  { id: 'google-drive', name: 'Google Drive', description: 'Read/write docs and sheets', connected: false },
 ]
 
 export default function Settings() {
@@ -24,20 +30,19 @@ export default function Settings() {
           title="MCP Server Connections"
           description="Connect NexusOS to external tools. Your AI agents can then access these tools without custom API code."
         >
-          <LegacyCard sectioned>
+          <Card>
             <BlockStack gap="400">
               {mcpServers.map(server => (
                 <div key={server.id}>
                   <InlineStack align="space-between" blockAlign="center">
                     <InlineStack gap="300" blockAlign="center">
-                      <Text as="span" variant="headingMd">{server.icon}</Text>
                       <BlockStack gap="050">
                         <Text variant="bodyMd" fontWeight="semibold" as="p">{server.name}</Text>
                         <Text variant="bodySm" tone="subdued" as="p">{server.description}</Text>
                       </BlockStack>
                     </InlineStack>
                     <InlineStack gap="200" blockAlign="center">
-                      <Badge tone={server.connected ? 'success' : 'subdued'}>
+                      <Badge tone={server.connected ? 'success' : undefined}>
                         {server.connected ? 'Connected' : 'Not Connected'}
                       </Badge>
                       <Button size="slim" variant={server.connected ? 'plain' : 'secondary'}>
@@ -49,7 +54,7 @@ export default function Settings() {
                 </div>
               ))}
             </BlockStack>
-          </LegacyCard>
+          </Card>
         </Layout.AnnotatedSection>
 
         {/* Human-in-the-Loop */}
@@ -57,19 +62,13 @@ export default function Settings() {
           title="Human-in-the-Loop Safety"
           description="Control which AI actions require your approval before execution."
         >
-          <LegacyCard sectioned>
+          <Card>
             <BlockStack gap="400">
-              <SettingToggle
-                action={{
-                  content: humanLoopEnabled ? 'Enabled' : 'Disabled',
-                  onAction: () => setHumanLoopEnabled(v => !v),
-                }}
-                enabled={humanLoopEnabled}
-              >
-                <Text as="p" variant="bodyMd">
-                  Require approval for AI actions above:
-                </Text>
-              </SettingToggle>
+              <Checkbox
+                label="Require approval for AI actions above the threshold"
+                checked={humanLoopEnabled}
+                onChange={setHumanLoopEnabled}
+              />
               <TextField
                 label="Approval threshold (USD)"
                 type="number"
@@ -80,7 +79,7 @@ export default function Settings() {
                 helpText="Any AI action costing more than this must be manually approved."
               />
             </BlockStack>
-          </LegacyCard>
+          </Card>
         </Layout.AnnotatedSection>
 
         {/* AI Model Keys */}
@@ -88,15 +87,15 @@ export default function Settings() {
           title="AI Model API Keys"
           description="Configure your LLM keys. Local Ollama runs without any key."
         >
-          <LegacyCard sectioned>
+          <Card>
             <BlockStack gap="400">
               <TextField label="Anthropic API Key (Claude)" type="password" value="" onChange={() => {}} autoComplete="off" helpText="Used for standard tasks (drafting replies, analysis)" />
               <TextField label="OpenAI API Key (GPT-4o / o1)" type="password" value="" onChange={() => {}} autoComplete="off" helpText="Used for complex reasoning tasks only" />
               <Banner tone="info">
-                <Text as="p">🟢 <strong>Ollama (Llama3:8b)</strong> running at http://localhost:11434 — free local inference for 72% of tasks.</Text>
+                <Text as="p"><strong>Ollama (Llama3:8b)</strong> runs at http://localhost:11434 for local inference.</Text>
               </Banner>
             </BlockStack>
-          </LegacyCard>
+          </Card>
         </Layout.AnnotatedSection>
 
         {/* Shopify */}
@@ -104,7 +103,7 @@ export default function Settings() {
           title="Shopify Integration"
           description="Your Shopify store connection details."
         >
-          <LegacyCard sectioned>
+          <Card>
             <BlockStack gap="300">
               <InlineStack align="space-between">
                 <Text as="p" variant="bodyMd">Shop Domain</Text>
@@ -118,10 +117,10 @@ export default function Settings() {
               </InlineStack>
               <InlineStack align="space-between">
                 <Text as="p" variant="bodyMd">GraphQL API Version</Text>
-                <Text as="p" variant="bodySm" tone="subdued">2026-01</Text>
+                <Text as="p" variant="bodySm" tone="subdued">{shopifyApiVersion}</Text>
               </InlineStack>
             </BlockStack>
-          </LegacyCard>
+          </Card>
         </Layout.AnnotatedSection>
       </Layout>
     </Page>

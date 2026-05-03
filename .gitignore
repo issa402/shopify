@@ -7,14 +7,19 @@
 # Node
 node_modules/
 dist/
+.vite/
+.vite-inspect/
+.parcel-cache/
 .next/
 build/
 .turbo/
+coverage/
 
 # Logs
 *.log
 npm-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
 # OS junk
 .DS_Store
@@ -23,6 +28,48 @@ desktop.ini
 
 # Docker
 .docker/
+
+# Generated bind-mount artifacts
+services/gateway/mcp-config.json
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+.coverage
+htmlcov/
+
+# Local databases and generated runtime data
+*.db
+*.sqlite
+*.sqlite3
+data/
+tmp/
+temp/
+
+# Archives and disk images
+*.7z
+*.dmg
+*.gz
+*.iso
+*.rar
+*.tar
+*.tgz
+*.zip
+
+# Large media/binary artifacts
+*.mov
+*.mp4
+*.avi
+*.mkv
+*.webm
+*.psd
+*.ai
 
 # Misc
 .cache/

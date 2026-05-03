@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# This hook blocks large staged files before they enter Git history.
+set -euo pipefail
+
+# Run from the repository root no matter where the commit command starts.
+cd "$(git rev-parse --show-toplevel)"
+
+# Delegate the actual size logic to the tracked script so it is reviewable.
+scripts/check-large-files.sh --staged

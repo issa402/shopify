@@ -1,6 +1,6 @@
 import {
-  Page, Layout, LegacyCard, Button, Text, Badge, EmptyState,
-  BlockStack, InlineStack, Select, TextField, Divider, Box,
+  Page, Layout, Card, Button, Text, Badge,
+  BlockStack, InlineStack, InlineGrid, Select, TextField, Divider, Box,
 } from '@shopify/polaris'
 import { useState } from 'react'
 
@@ -47,6 +47,14 @@ const sampleRules: WorkflowRule[] = [
 export default function Workflows() {
   const [rules, setRules] = useState(sampleRules)
   const [showBuilder, setShowBuilder] = useState(false)
+  // Form state makes the workflow builder functional instead of a static demo.
+  const [draftName, setDraftName] = useState('')
+  // The selected trigger maps to Shopify/webhook-style event names.
+  const [draftTrigger, setDraftTrigger] = useState('order.created')
+  // Conditions are optional because some automations should fire on every event.
+  const [draftCondition, setDraftCondition] = useState('')
+  // The action field captures the agent/tool call the workflow should perform.
+  const [draftAction, setDraftAction] = useState('')
 
   const toggleStatus = (id: string) => {
     setRules(r => r.map(rule =>
@@ -54,6 +62,38 @@ export default function Workflows() {
         ? { ...rule, status: rule.status === 'active' ? 'paused' : 'active' }
         : rule
     ))
+  }
+
+  const saveWorkflow = () => {
+    // Trimmed values prevent blank-looking workflows from being saved.
+    const name = draftName.trim()
+    // A workflow needs a name and action to be useful to a merchant.
+    const action = draftAction.trim()
+
+    if (!name || !action) {
+      // Keeping the builder open makes the missing fields obvious without extra UI state.
+      return
+    }
+
+    setRules(currentRules => [
+      // New workflows appear first because the merchant just created them.
+      {
+        id: `wf_${Date.now()}`,
+        name,
+        trigger: draftTrigger,
+        condition: draftCondition.trim() || 'always',
+        action,
+        status: 'active',
+        runs: 0,
+      },
+      ...currentRules,
+    ])
+    // Resetting the draft makes the next workflow start clean.
+    setDraftName('')
+    setDraftTrigger('order.created')
+    setDraftCondition('')
+    setDraftAction('')
+    setShowBuilder(false)
   }
 
   return (
@@ -65,11 +105,11 @@ export default function Workflows() {
       <Layout>
         {rules.map(rule => (
           <Layout.Section key={rule.id}>
-            <LegacyCard sectioned>
+            <Card>
               <BlockStack gap="300">
                 <InlineStack align="space-between" blockAlign="center">
                   <InlineStack gap="200" blockAlign="center">
-                    <Badge tone={rule.status === 'active' ? 'success' : 'subdued'}>
+                    <Badge tone={rule.status === 'active' ? 'success' : undefined}>
                       {rule.status === 'active' ? '● Active' : '○ Paused'}
                     </Badge>
                     <Text variant="headingMd" as="h2">{rule.name}</Text>
@@ -96,7 +136,7 @@ export default function Workflows() {
                   <Box>
                     <Text variant="bodySm" tone="subdued" as="p">CONDITION</Text>
                     <Text variant="bodySm" as="p"
-                      tone="info">{rule.condition}
+                      tone="subdued">{rule.condition}
                     </Text>
                   </Box>
                   <Box>
@@ -105,15 +145,16 @@ export default function Workflows() {
                   </Box>
                 </InlineGrid>
               </BlockStack>
-            </LegacyCard>
+            </Card>
           </Layout.Section>
         ))}
 
         {showBuilder && (
           <Layout.Section>
-            <LegacyCard title="New Workflow" sectioned>
+            <Card>
               <BlockStack gap="400">
-                <TextField label="Workflow Name" autoComplete="off" value="" onChange={() => {}} />
+                <Text as="h2" variant="headingMd">New Workflow</Text>
+                <TextField label="Workflow Name" autoComplete="off" value={draftName} onChange={setDraftName} />
                 <Select
                   label="Trigger Event"
                   options={[
@@ -123,17 +164,17 @@ export default function Workflows() {
                     { label: 'Support Ticket Opened', value: 'ticket.created' },
                     { label: 'Customer Churned', value: 'customer.churn_risk' },
                   ]}
-                  value="order.created"
-                  onChange={() => {}}
+                  value={draftTrigger}
+                  onChange={setDraftTrigger}
                 />
-                <TextField label="Condition (optional)" autoComplete="off" value="" onChange={() => {}} placeholder="order.total > 500" />
-                <TextField label="Action" autoComplete="off" value="" onChange={() => {}} placeholder="slack.notify(#ops)" />
+                <TextField label="Condition (optional)" autoComplete="off" value={draftCondition} onChange={setDraftCondition} placeholder="order.total > 500" />
+                <TextField label="Action" autoComplete="off" value={draftAction} onChange={setDraftAction} placeholder="slack.notify(#ops)" />
                 <InlineStack gap="200">
-                  <Button variant="primary">Save Workflow</Button>
+                  <Button variant="primary" onClick={saveWorkflow}>Save Workflow</Button>
                   <Button variant="plain" onClick={() => setShowBuilder(false)}>Cancel</Button>
                 </InlineStack>
               </BlockStack>
-            </LegacyCard>
+            </Card>
           </Layout.Section>
         )}
       </Layout>

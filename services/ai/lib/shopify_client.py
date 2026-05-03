@@ -39,10 +39,9 @@ import httpx  # async HTTP client — same as requests but supports async/await
 
 logger = logging.getLogger(__name__)
 
-# The Shopify API version we're targeting.
-# Pinned to a specific version so our code doesn't break when Shopify releases
-# a new version with breaking changes. Update this intentionally, not by accident.
-SHOPIFY_API_VERSION = "2024-01"
+# The Shopify API version is env-configurable so upgrades are intentional per environment.
+# Defaulting to 2026-04 matches Shopify's latest stable Admin API on May 1, 2026.
+SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2026-04")
 
 
 class ShopifyAPIError(Exception):
@@ -103,7 +102,7 @@ class ShopifyClient:
         self.access_token = access_token
 
         # Base URL for all API calls.
-        # f-string builds: "https://my-pokemon-store.myshopify.com/admin/api/2024-01"
+        # f-string builds: "https://my-pokemon-store.myshopify.com/admin/api/2026-04"
         self.base_url = f"https://{shop_domain}/admin/api/{SHOPIFY_API_VERSION}"
 
         # httpx.AsyncClient is the async HTTP session.

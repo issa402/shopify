@@ -1,10 +1,10 @@
 import {
-  Page, Layout, LegacyCard, DataTable, Badge, Text,
-  BlockStack, InlineGrid, Box, Divider,
+  Page, Layout, Card, DataTable, Badge, Text,
+  BlockStack, InlineGrid, Box,
 } from '@shopify/polaris'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
-// Mock data — replace with real API calls
+// Demo revenue data keeps the dashboard useful before live Shopify data is connected.
 const revenueData = [
   { day: 'Mon', revenue: 4200, ai_actions: 23 },
   { day: 'Tue', revenue: 5800, ai_actions: 31 },
@@ -44,7 +44,9 @@ export default function Dashboard() {
 
         {/* Revenue Chart */}
         <Layout.Section>
-          <LegacyCard title="Revenue & AI Actions (Last 7 Days)" sectioned>
+          <Card>
+            <BlockStack gap="400">
+              <Text as="h2" variant="headingMd">Revenue & AI Actions (Last 7 Days)</Text>
             <div style={{ height: 260 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={revenueData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
@@ -65,36 +67,40 @@ export default function Dashboard() {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          </LegacyCard>
-        </Layout.Section>
-
-        {/* Recent Orders */}
-        <Layout.Section oneHalf>
-          <LegacyCard title="Recent Orders">
-            <DataTable
-              columnContentTypes={['text', 'text', 'numeric', 'text']}
-              headings={['Order', 'Customer', 'Total', 'Status']}
-              rows={recentOrders}
-            />
-          </LegacyCard>
-        </Layout.Section>
-
-        {/* Agent Status */}
-        <Layout.Section oneHalf>
-          <LegacyCard title="Agent Swarm Status" sectioned>
-            <BlockStack gap="300">
-              {agentStats.map(agent => (
-                <Box key={agent.name} padding="300" background="bg-surface-secondary" borderRadius="200">
-                  <InlineGrid columns="1fr auto auto auto" gap="300" alignItems="center">
-                    <Text variant="bodyMd" fontWeight="semibold" as="span">{agent.name}</Text>
-                    <Badge tone={agent.status === 'Active' ? 'success' : 'subdued'}>{agent.status}</Badge>
-                    <Text variant="bodySm" tone="subdued" as="span">{agent.resolutions} resolved</Text>
-                    <Text variant="bodySm" as="span">{agent.cost}</Text>
-                  </InlineGrid>
-                </Box>
-              ))}
             </BlockStack>
-          </LegacyCard>
+          </Card>
+        </Layout.Section>
+
+        <Layout.Section>
+          {/* InlineGrid replaces the removed Layout.Section oneHalf prop in current Polaris. */}
+          <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">Recent Orders</Text>
+                <DataTable
+                  columnContentTypes={['text', 'text', 'numeric', 'text']}
+                  headings={['Order', 'Customer', 'Total', 'Status']}
+                  rows={recentOrders}
+                />
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">Agent Swarm Status</Text>
+                {agentStats.map(agent => (
+                  <Box key={agent.name} padding="300" background="bg-surface-secondary" borderRadius="200">
+                    <InlineGrid columns="1fr auto auto auto" gap="300" alignItems="center">
+                      <Text variant="bodyMd" fontWeight="semibold" as="span">{agent.name}</Text>
+                      <Badge tone={agent.status === 'Active' ? 'success' : undefined}>{agent.status}</Badge>
+                      <Text variant="bodySm" tone="subdued" as="span">{agent.resolutions} resolved</Text>
+                      <Text variant="bodySm" as="span">{agent.cost}</Text>
+                    </InlineGrid>
+                  </Box>
+                ))}
+              </BlockStack>
+            </Card>
+          </InlineGrid>
         </Layout.Section>
       </Layout>
     </Page>
@@ -105,12 +111,12 @@ function KPICard({ title, value, change, positive }: {
   title: string; value: string; change: string; positive: boolean
 }) {
   return (
-    <LegacyCard sectioned>
+    <Card>
       <BlockStack gap="100">
         <Text variant="bodySm" tone="subdued" as="p">{title}</Text>
         <Text variant="heading2xl" fontWeight="bold" as="p">{value}</Text>
         <Text variant="bodySm" tone={positive ? 'success' : 'critical'} as="p">{change}</Text>
       </BlockStack>
-    </LegacyCard>
+    </Card>
   )
 }

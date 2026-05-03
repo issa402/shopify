@@ -64,11 +64,19 @@ func main() {
 
 	// ── Health Check ──────────────────────────────────────────────────
 	router.GET("/health", func(c *gin.Context) {
+		// Read the Shopify API version from env so deployments can upgrade deliberately.
+		shopifyAPIVersion := os.Getenv("SHOPIFY_API_VERSION")
+		// Default to the latest stable Admin API on May 1, 2026.
+		if shopifyAPIVersion == "" {
+			shopifyAPIVersion = "2026-04"
+		}
+
 		c.JSON(http.StatusOK, gin.H{
-			"status":  "healthy",
-			"service": "nexusos-gateway",
-			"version": "2026.1.0",
-			"time":    time.Now().UTC(),
+			"status":              "healthy",
+			"service":             "nexusos-gateway",
+			"version":             "2026.4.0",
+			"shopify_api_version": shopifyAPIVersion,
+			"time":                time.Now().UTC(),
 		})
 	})
 

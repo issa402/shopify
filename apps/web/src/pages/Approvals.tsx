@@ -1,6 +1,6 @@
 import {
-  Page, Layout, LegacyCard, Button, Text, Badge,
-  BlockStack, InlineGrid, Banner, CalloutCard,
+  Page, Layout, Card, Button, Text, Badge,
+  BlockStack, InlineGrid, Banner,
   InlineStack, Box, Divider,
 } from '@shopify/polaris'
 import { useState } from 'react'
@@ -69,20 +69,20 @@ export default function Approvals() {
         {pending.length === 0 && (
           <Layout.Section>
             <Banner tone="success">
-              <Text as="p">✅ All caught up! No pending approvals.</Text>
+              <Text as="p">All caught up. No pending approvals.</Text>
             </Banner>
           </Layout.Section>
         )}
 
         {pending.map(approval => (
           <Layout.Section key={approval.id}>
-            <LegacyCard sectioned>
+            <Card>
               <BlockStack gap="400">
                 {/* Header */}
                 <InlineStack align="space-between" blockAlign="center">
                   <InlineStack gap="200" blockAlign="center">
                     <Badge tone={approval.risk_level === 'high' ? 'critical' : 'attention'}>
-                      {approval.risk_level.toUpperCase()} RISK
+                      {`${approval.risk_level.toUpperCase()} RISK`}
                     </Badge>
                     <Text variant="headingMd" as="h2">{approval.agent}</Text>
                     <Text variant="bodySm" tone="subdued" as="span">
@@ -117,35 +117,36 @@ export default function Approvals() {
                     tone="success"
                     onClick={() => setApproved(prev => [...prev, approval.id])}
                   >
-                    ✅ Approve — Execute Now
+                    Approve and execute
                   </Button>
                   <Button
                     variant="secondary"
                     tone="critical"
                     onClick={() => setRejected(prev => [...prev, approval.id])}
                   >
-                    ❌ Reject
+                    Reject
                   </Button>
                   <Button variant="plain">View Full AI Reasoning</Button>
                 </InlineStack>
               </BlockStack>
-            </LegacyCard>
+            </Card>
           </Layout.Section>
         ))}
 
         {/* Resolved section */}
         {(approved.length > 0 || rejected.length > 0) && (
           <Layout.Section>
-            <LegacyCard title="Resolved" sectioned>
+            <Card>
               <BlockStack gap="200">
+                <Text as="h2" variant="headingMd">Resolved</Text>
                 {approved.map(id => (
-                  <Text key={id} tone="success" as="p">✅ {id} — Approved and executed</Text>
+                  <Text key={id} tone="success" as="p">{id} - Approved and executed</Text>
                 ))}
                 {rejected.map(id => (
-                  <Text key={id} tone="critical" as="p">❌ {id} — Rejected</Text>
+                  <Text key={id} tone="critical" as="p">{id} - Rejected</Text>
                 ))}
               </BlockStack>
-            </LegacyCard>
+            </Card>
           </Layout.Section>
         )}
       </Layout>

@@ -21,11 +21,11 @@ const (
 
 // routePermissions maps HTTP method + path prefix to minimum required role.
 var routePermissions = map[string]string{
-	"DELETE:/api/v1/customers": RoleAdmin,   // GDPR deletion requires admin
-	"POST:/api/v1/approvals":   RoleAdmin,   // approve/reject requires admin
-	"GET:/api/v1/ai/decisions": RoleViewer,  // anyone can view AI logs
-	"GET:/api/v1/orders":       RoleViewer,
-	"GET:/api/v1/customers":    RoleViewer,
+	"DELETE:/api/v1/customers":     RoleAdmin,  // GDPR deletion requires admin
+	"POST:/api/v1/approvals":       RoleAdmin,  // approve/reject requires admin
+	"GET:/api/v1/ai/decisions":     RoleViewer, // anyone can view AI logs
+	"GET:/api/v1/orders":           RoleViewer,
+	"GET:/api/v1/customers":        RoleViewer,
 	"POST:/api/v1/agent/negotiate": RoleOwner, // A2A only for store owners
 }
 

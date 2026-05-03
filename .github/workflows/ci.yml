@@ -3,19 +3,19 @@ name : Pokemon Health System Check
 
 
 # 1. Trigger on push, PR, and manual trigger
-on:
+on: #what triggers the scripts
   push:
-    branches: [ main, master ]
+    branches: [ main, master ] # whenever code is uploaded 
   pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
+    branches: [ main, master ] #whenever it is merged
+  workflow_dispatch: #adds a button so u can run it manually
 
-jobs:
-  health-check:
-    runs-on: ubuntu-latest
+jobs: # container for steps below
+  health-check: #unique id for specific job
+    runs-on: ubuntu-latest #tells github to use a fresh linux virtual amchines
 
     # 2. Provide Postgres + Redis (Service Containers)
-    services:
+    services: #helper tools form dockercompose.yml
       postgres:
         image: postgres:15-alpine
         env:
@@ -35,14 +35,14 @@ jobs:
         ports:
           - 6379:6379
 
-    steps:
+    steps: # sequence f commands to execute
       # 3. Checkout the repo
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 #clones our code to virtual machine
 
       # 4. Set up Go
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v5 #install the Go programming lanaguage
         with:
           go-version: '1.21'
 

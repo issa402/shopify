@@ -1,0 +1,23 @@
+# This image keeps Python packages inside Docker instead of in the host Python.
+FROM python:3.11-slim
+
+# This setting keeps Python from writing .pyc files into mounted project folders.
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# This setting streams logs immediately so container output is useful during dev.
+ENV PYTHONUNBUFFERED=1
+
+# This working directory is the isolated AI service folder inside the container.
+WORKDIR /workspace/services/ai
+
+# These OS packages cover common ML and async dependency wheels used by the AI service.
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential curl && rm -rf /var/lib/apt/lists/*
+
+# This copy lets Docker cache Python dependency installs until requirements change.
+COPY requirements.txt ./
+
+# This install is intentionally container-local, so Python packages stay off the host.
+RUN pip install --no-cache-dir -r requirements.txt
+
+# This command serves FastAPI on every interface so other containers can reach it.
+CMD ["python", "-m", "uvicorn", "main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
