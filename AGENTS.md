@@ -5,8 +5,9 @@
 When a new AI/Codex session starts in this repo, read these in order:
 
 1. `AGENTS.md` first. This is the repo-level operating contract and should be treated as the always-on instruction file.
-2. `future_standard_mastery/CODEX_SAFE_INTEGRATION.md` when the task involves Codex tools, MCP servers, browser automation, skills, memory, or outside repos.
-3. The specific service files for the current task. For the Shopify/NexusOS app, start with `docker-compose.dev.yml`, `docker-compose.yml`, `services/gateway/main.go`, `services/gateway/internal/dashboard/handler.go`, `services/ai/main.py`, and the relevant `apps/web/src/pages/*` file.
+2. `docs/PROJECT_HANDOFF.md` for the current product concept, Pokemon/PokeTCG status, architecture, working pieces, risks, and next steps.
+3. `future_standard_mastery/CODEX_SAFE_INTEGRATION.md` when the task involves Codex tools, MCP servers, browser automation, skills, memory, or outside repos.
+4. The specific service files for the current task. For the Shopify/NexusOS app, start with `docker-compose.dev.yml`, `docker-compose.yml`, `services/gateway/main.go`, `services/gateway/internal/dashboard/handler.go`, `services/ai/main.py`, and the relevant `apps/web/src/pages/*` file. For Pokemon/PokeTCG work, start with `Pokemon/docker-compose.yml`, `PokeTCG/pokeai-service/pokeai/api_server.py`, `Pokemon/server/routes/routes.go`, `Pokemon/server/handlers/card_handler.go`, `Pokemon/server/services/card_service.go`, and `Pokemon/client/src/pages/WatchlistPage.jsx`.
 
 Do not assume old chat context is available. If the user asks "what is left" or "what did we do", use the Current Shopify/NexusOS State section below before making changes.
 
