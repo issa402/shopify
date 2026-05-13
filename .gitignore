@@ -39,6 +39,7 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .venv/
+.codex-venvs/
 venv/
 env/
 .coverage
@@ -73,4 +74,6 @@ temp/
 
 # Misc
 .cache/
+.codex-cache/
+.codex-browser-use/
 *.tsbuildinfo

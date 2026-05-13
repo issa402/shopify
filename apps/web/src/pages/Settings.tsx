@@ -1,66 +1,100 @@
 import {
   Page, Layout, Card, Checkbox, Text, Badge,
-  BlockStack, TextField, Button, InlineStack, Divider,
-  Banner,
+  BlockStack, TextField, InlineStack, Divider,
+  Banner, Spinner, Box,
 } from '@shopify/polaris'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { apiGet } from '../api'
 
-const shopifyApiVersion = '2026-04'
+interface HealthResponse {
+  status: string
+  service: string
+  version: string
+  shopify_api_version: string
+}
 
-const mcpServers = [
-  // PostgreSQL is connected first because agents need merchant data context.
-  { id: 'postgres', name: 'PostgreSQL', description: 'Direct database access for agents', connected: true },
-  // Filesystem access is useful for generated reports and local operational docs.
-  { id: 'filesystem', name: 'File System', description: 'Local file read/write for agents', connected: true },
-  // Slack starts disconnected until the merchant authorizes workspace access.
-  { id: 'slack', name: 'Slack', description: 'Send messages, read channels', connected: false },
-  // Google Drive starts disconnected until OAuth credentials are configured.
-  { id: 'google-drive', name: 'Google Drive', description: 'Read/write docs and sheets', connected: false },
-]
+interface DashboardResponse {
+  setup_required: boolean
+  merchant: null | { id: string; shop_domain: string }
+}
 
 export default function Settings() {
   const [humanLoopEnabled, setHumanLoopEnabled] = useState(true)
   const [threshold, setThreshold] = useState('100')
+  const [health, setHealth] = useState<HealthResponse | null>(null)
+  const [merchant, setMerchant] = useState<DashboardResponse['merchant']>(null)
+  const [setupRequired, setSetupRequired] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/health').then(res => res.json()),
+      apiGet<DashboardResponse>('/dashboard'),
+    ])
+      .then(([healthData, dashboard]) => {
+        setHealth(healthData)
+        setMerchant(dashboard.merchant)
+        setSetupRequired(dashboard.setup_required)
+      })
+      .catch(err => setError(err instanceof Error ? err.message : 'Settings load failed'))
+  }, [])
 
   return (
-    <Page title="Settings & MCP Connectors">
+    <Page title="Settings & Connectors">
       <Layout>
-        {/* MCP Connectors */}
+        {error && <Layout.Section><Banner tone="critical"><Text as="p">{error}</Text></Banner></Layout.Section>}
+
         <Layout.AnnotatedSection
-          title="MCP Server Connections"
-          description="Connect NexusOS to external tools. Your AI agents can then access these tools without custom API code."
+          title="Runtime Status"
+          description="Live gateway and Shopify installation state."
         >
           <Card>
-            <BlockStack gap="400">
-              {mcpServers.map(server => (
-                <div key={server.id}>
-                  <InlineStack align="space-between" blockAlign="center">
-                    <InlineStack gap="300" blockAlign="center">
-                      <BlockStack gap="050">
-                        <Text variant="bodyMd" fontWeight="semibold" as="p">{server.name}</Text>
-                        <Text variant="bodySm" tone="subdued" as="p">{server.description}</Text>
-                      </BlockStack>
-                    </InlineStack>
-                    <InlineStack gap="200" blockAlign="center">
-                      <Badge tone={server.connected ? 'success' : undefined}>
-                        {server.connected ? 'Connected' : 'Not Connected'}
-                      </Badge>
-                      <Button size="slim" variant={server.connected ? 'plain' : 'secondary'}>
-                        {server.connected ? 'Configure' : 'Connect'}
-                      </Button>
-                    </InlineStack>
-                  </InlineStack>
-                  <Divider />
-                </div>
-              ))}
+            {!health ? (
+              <Box padding="400"><Spinner accessibilityLabel="Loading runtime status" /></Box>
+            ) : (
+              <BlockStack gap="300">
+                <InlineStack align="space-between">
+                  <Text as="p" variant="bodyMd">Gateway</Text>
+                  <Badge tone={health.status === 'healthy' ? 'success' : 'critical'}>{health.status}</Badge>
+                </InlineStack>
+                <InlineStack align="space-between">
+                  <Text as="p" variant="bodyMd">Service Version</Text>
+                  <Text as="p" variant="bodySm" tone="subdued">{health.version}</Text>
+                </InlineStack>
+                <InlineStack align="space-between">
+                  <Text as="p" variant="bodyMd">Shopify API Version</Text>
+                  <Text as="p" variant="bodySm" tone="subdued">{health.shopify_api_version}</Text>
+                </InlineStack>
+              </BlockStack>
+            )}
+          </Card>
+        </Layout.AnnotatedSection>
+
+        <Layout.AnnotatedSection
+          title="Shopify Integration"
+          description="The merchant row created by Shopify OAuth."
+        >
+          <Card>
+            <BlockStack gap="300">
+              <InlineStack align="space-between">
+                <Text as="p" variant="bodyMd">Shop Domain</Text>
+                <Badge tone={merchant ? 'success' : 'attention'}>{merchant ? 'Installed' : 'Not Installed'}</Badge>
+              </InlineStack>
+              <Text variant="bodySm" tone="subdued" as="p">
+                {merchant?.shop_domain || 'No merchant exists in Postgres yet.'}
+              </Text>
+              {setupRequired && (
+                <Banner tone="warning">
+                  <Text as="p">Run the Shopify OAuth flow before expecting live orders, customers, webhooks, or AI decisions.</Text>
+                </Banner>
+              )}
             </BlockStack>
           </Card>
         </Layout.AnnotatedSection>
 
-        {/* Human-in-the-Loop */}
         <Layout.AnnotatedSection
           title="Human-in-the-Loop Safety"
-          description="Control which AI actions require your approval before execution."
+          description="Local UI setting for approval thresholds. Enforcement lives in agent tools and approval_queue."
         >
           <Card>
             <BlockStack gap="400">
@@ -76,49 +110,22 @@ export default function Settings() {
                 onChange={setThreshold}
                 prefix="$"
                 autoComplete="off"
-                helpText="Any AI action costing more than this must be manually approved."
+                helpText="Agent tools currently queue large actions in Postgres for review."
               />
             </BlockStack>
           </Card>
         </Layout.AnnotatedSection>
 
-        {/* AI Model Keys */}
         <Layout.AnnotatedSection
-          title="AI Model API Keys"
-          description="Configure your LLM keys. Local Ollama runs without any key."
+          title="AI Model Keys"
+          description="Keys are read from environment variables, not from this browser form."
         >
           <Card>
             <BlockStack gap="400">
-              <TextField label="Anthropic API Key (Claude)" type="password" value="" onChange={() => {}} autoComplete="off" helpText="Used for standard tasks (drafting replies, analysis)" />
-              <TextField label="OpenAI API Key (GPT-4o / o1)" type="password" value="" onChange={() => {}} autoComplete="off" helpText="Used for complex reasoning tasks only" />
-              <Banner tone="info">
-                <Text as="p"><strong>Ollama (Llama3:8b)</strong> runs at http://localhost:11434 for local inference.</Text>
-              </Banner>
-            </BlockStack>
-          </Card>
-        </Layout.AnnotatedSection>
-
-        {/* Shopify */}
-        <Layout.AnnotatedSection
-          title="Shopify Integration"
-          description="Your Shopify store connection details."
-        >
-          <Card>
-            <BlockStack gap="300">
-              <InlineStack align="space-between">
-                <Text as="p" variant="bodyMd">Shop Domain</Text>
-                <Badge tone="success">Connected</Badge>
-              </InlineStack>
-              <Text variant="bodySm" tone="subdued" as="p">your-store.myshopify.com</Text>
+              <TextField label="ANTHROPIC_API_KEY" type="password" value="" onChange={() => {}} autoComplete="off" helpText="Set this in .env or container environment." />
+              <TextField label="OPENAI_API_KEY" type="password" value="" onChange={() => {}} autoComplete="off" helpText="Set this in .env or container environment." />
               <Divider />
-              <InlineStack align="space-between">
-                <Text as="p" variant="bodyMd">Webhooks</Text>
-                <Badge tone="success">12 Active</Badge>
-              </InlineStack>
-              <InlineStack align="space-between">
-                <Text as="p" variant="bodyMd">GraphQL API Version</Text>
-                <Text as="p" variant="bodySm" tone="subdued">{shopifyApiVersion}</Text>
-              </InlineStack>
+              <Text as="p" tone="subdued">Ollama is configured through OLLAMA_BASE_URL for local model calls.</Text>
             </BlockStack>
           </Card>
         </Layout.AnnotatedSection>

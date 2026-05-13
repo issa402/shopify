@@ -2,6 +2,14 @@
 
 This section teaches you how to translate what you know locally into AWS, Azure, and hybrid infrastructure thinking.
 
+## Deep Azure Track
+
+Start here for the full Azure-focused mastery path:
+
+- [AZURE_HYBRID_MASTERY.md](/home/iscjmz/shopify/shopify/future_standard_mastery/AZURE_HYBRID_MASTERY.md)
+
+That guide builds intuition from zero, then walks through design docs, risk thinking, hybrid architecture, Azure services, and hands-on labs.
+
 ## What This Domain Means
 
 Cloud understanding for this role is not just "I know service names."

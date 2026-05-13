@@ -1,4 +1,8 @@
 # This compose file runs app services in containers so host dependencies stay clean.
+include:
+  # The dev app services depend on the base infrastructure services.
+  - docker-compose.yml
+
 services:
   # The web service runs Vite with Node dependencies installed inside the image.
   web:
@@ -51,6 +55,8 @@ services:
       PORT_GATEWAY: "8080"
       # The app should target Shopify's latest stable Admin API on May 1, 2026.
       SHOPIFY_API_VERSION: "2026-04"
+      # Local dashboard development can read real DB state before Shopify OAuth/JWT is wired.
+      DEV_AUTH_BYPASS: "true"
     # Port 8080 exposes the gateway API to the browser and local tools.
     ports:
       - "8080:8080"

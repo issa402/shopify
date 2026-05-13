@@ -1,75 +1,61 @@
 import {
   Page, Layout, Card, Button, Text, Badge,
   BlockStack, InlineGrid, Banner,
-  InlineStack, Box, Divider,
+  InlineStack, Box, Divider, Spinner,
 } from '@shopify/polaris'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { apiGet, apiPost, formatMoney } from '../api'
 
 interface PendingApproval {
   id: string
   agent: string
   action_type: string
-  description: string
+  action_payload: Record<string, unknown>
   estimated_cost: number
   created_at: string
-  risk_level: 'low' | 'medium' | 'high'
-  details: Record<string, string>
+  status: string
 }
 
-const pendingApprovals: PendingApproval[] = [
-  {
-    id: 'appr_001',
-    agent: 'LogisticsAgent',
-    action_type: 'purchase_order',
-    description: 'Create Purchase Order: 200 units of SKU-XYZ-001 from SupplierCo at $8.50/unit',
-    estimated_cost: 1700.00,
-    created_at: '2026-03-11T22:30:00Z',
-    risk_level: 'medium',
-    details: {
-      supplier: 'SupplierCo International',
-      sku: 'XYZ-001',
-      quantity: '200 units',
-      unit_cost: '$8.50',
-      total: '$1,700.00',
-      reason: 'Stock at 45 units, reorder point is 50. Stockout predicted in 6 days.',
-      lead_time: '14 days',
-    },
-  },
-  {
-    id: 'appr_002',
-    agent: 'SupportAgent',
-    action_type: 'refund',
-    description: 'Issue refund of $235.00 for Order #10219 (customer claims item never arrived)',
-    estimated_cost: 235.00,
-    created_at: '2026-03-11T22:45:00Z',
-    risk_level: 'medium',
-    details: {
-      customer: 'Robert Johnson',
-      order: '#10219',
-      amount: '$235.00',
-      reason: 'Item not received. Carrier shows "delivered" but customer disputes.',
-      margin_impact: 'Reduces order margin from 32% to 0%. Finance Agent flagged for review.',
-      recommendation: 'Issue partial store credit of $117.50 instead of full refund.',
-    },
-  },
-]
+interface ApprovalResponse {
+  setup_required?: boolean
+  pending?: PendingApproval[]
+}
 
 export default function Approvals() {
-  const [approved, setApproved] = useState<string[]>([])
-  const [rejected, setRejected] = useState<string[]>([])
+  const [pending, setPending] = useState<PendingApproval[]>([])
+  const [setupRequired, setSetupRequired] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
 
-  const pending = pendingApprovals.filter(a => !approved.includes(a.id) && !rejected.includes(a.id))
+  const loadApprovals = () => {
+    setLoading(true)
+    apiGet<ApprovalResponse>('/approvals/pending')
+      .then(data => {
+        setSetupRequired(Boolean(data.setup_required))
+        setPending(data.pending || [])
+      })
+      .catch(err => setError(err instanceof Error ? err.message : 'Approvals API failed'))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(loadApprovals, [])
+
+  const decide = async (id: string, action: 'approve' | 'reject') => {
+    await apiPost(`/approvals/${id}/${action}`)
+    setPending(current => current.filter(item => item.id !== id))
+  }
 
   return (
-    <Page
-      title="Human-in-the-Loop Approvals"
-      subtitle="AI actions above $100 or with high risk require your review"
-    >
+    <Page title="Human-in-the-Loop Approvals" subtitle="AI actions that require review before execution">
       <Layout>
-        {pending.length === 0 && (
+        {error && <Layout.Section><Banner tone="critical"><Text as="p">{error}</Text></Banner></Layout.Section>}
+        {setupRequired && <Layout.Section><Banner tone="warning"><Text as="p">No Shopify merchant is installed yet, so the approval queue is not available.</Text></Banner></Layout.Section>}
+        {loading && <Layout.Section><Box padding="500"><Spinner accessibilityLabel="Loading approvals" /></Box></Layout.Section>}
+
+        {!loading && pending.length === 0 && (
           <Layout.Section>
             <Banner tone="success">
-              <Text as="p">All caught up. No pending approvals.</Text>
+              <Text as="p">No pending approvals are currently stored in the database.</Text>
             </Banner>
           </Layout.Section>
         )}
@@ -78,77 +64,44 @@ export default function Approvals() {
           <Layout.Section key={approval.id}>
             <Card>
               <BlockStack gap="400">
-                {/* Header */}
                 <InlineStack align="space-between" blockAlign="center">
                   <InlineStack gap="200" blockAlign="center">
-                    <Badge tone={approval.risk_level === 'high' ? 'critical' : 'attention'}>
-                      {`${approval.risk_level.toUpperCase()} RISK`}
+                    <Badge tone={approval.estimated_cost >= 100 ? 'attention' : undefined}>
+                      {approval.action_type}
                     </Badge>
                     <Text variant="headingMd" as="h2">{approval.agent}</Text>
                     <Text variant="bodySm" tone="subdued" as="span">
-                      {new Date(approval.created_at).toLocaleTimeString()}
+                      {new Date(approval.created_at).toLocaleString()}
                     </Text>
                   </InlineStack>
                   <Text variant="headingLg" fontWeight="bold" as="span">
-                    ${approval.estimated_cost.toFixed(2)}
+                    {formatMoney(approval.estimated_cost)}
                   </Text>
                 </InlineStack>
 
-                <Text variant="bodyMd" as="p">{approval.description}</Text>
-
-                <Divider />
-
-                {/* Details */}
                 <InlineGrid columns={3} gap="400">
-                  {Object.entries(approval.details).map(([key, value]) => (
+                  {Object.entries(approval.action_payload || {}).map(([key, value]) => (
                     <Box key={key}>
                       <Text variant="bodySm" tone="subdued" as="p">{key.replace(/_/g, ' ').toUpperCase()}</Text>
-                      <Text variant="bodySm" as="p">{value}</Text>
+                      <Text variant="bodySm" as="p">{String(value)}</Text>
                     </Box>
                   ))}
                 </InlineGrid>
 
                 <Divider />
 
-                {/* Actions */}
                 <InlineStack gap="300">
-                  <Button
-                    variant="primary"
-                    tone="success"
-                    onClick={() => setApproved(prev => [...prev, approval.id])}
-                  >
+                  <Button variant="primary" tone="success" onClick={() => decide(approval.id, 'approve')}>
                     Approve and execute
                   </Button>
-                  <Button
-                    variant="secondary"
-                    tone="critical"
-                    onClick={() => setRejected(prev => [...prev, approval.id])}
-                  >
+                  <Button variant="secondary" tone="critical" onClick={() => decide(approval.id, 'reject')}>
                     Reject
                   </Button>
-                  <Button variant="plain">View Full AI Reasoning</Button>
                 </InlineStack>
               </BlockStack>
             </Card>
           </Layout.Section>
         ))}
-
-        {/* Resolved section */}
-        {(approved.length > 0 || rejected.length > 0) && (
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="200">
-                <Text as="h2" variant="headingMd">Resolved</Text>
-                {approved.map(id => (
-                  <Text key={id} tone="success" as="p">{id} - Approved and executed</Text>
-                ))}
-                {rejected.map(id => (
-                  <Text key={id} tone="critical" as="p">{id} - Rejected</Text>
-                ))}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        )}
       </Layout>
     </Page>
   )

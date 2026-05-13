@@ -16,6 +16,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/nexusos/gateway/internal/a2a"
 	"github.com/nexusos/gateway/internal/auth"
+	"github.com/nexusos/gateway/internal/dashboard"
 	"github.com/nexusos/gateway/internal/db"
 	"github.com/nexusos/gateway/internal/kafka"
 	"github.com/nexusos/gateway/internal/mcp"
@@ -107,34 +108,24 @@ func main() {
 	api.Use(middleware.AuthRequired(pool))
 	api.Use(middleware.RBAC())
 	{
+		dashboardHandler := dashboard.NewHandler(pool)
+		api.GET("/dashboard", dashboardHandler.Overview)
+		api.GET("/workflows", dashboardHandler.Workflows)
+		api.POST("/workflows", dashboardHandler.CreateWorkflow)
+		api.POST("/workflows/:id/toggle", dashboardHandler.ToggleWorkflow)
+
 		// A2A Commerce Interface
 		a2aHandler := a2a.NewHandler(mcpHub)
 		api.POST("/agent/negotiate", a2aHandler.Negotiate)
 		api.GET("/agent/capabilities", a2aHandler.Capabilities)
 
 		// Merchant data endpoints
-		api.GET("/orders", func(c *gin.Context) {
-			merchantID := c.GetString("merchant_id")
-			c.JSON(http.StatusOK, gin.H{"merchant_id": merchantID, "orders": []interface{}{}})
-		})
-		api.GET("/customers", func(c *gin.Context) {
-			merchantID := c.GetString("merchant_id")
-			c.JSON(http.StatusOK, gin.H{"merchant_id": merchantID, "customers": []interface{}{}})
-		})
-		api.GET("/ai/decisions", func(c *gin.Context) {
-			merchantID := c.GetString("merchant_id")
-			c.JSON(http.StatusOK, gin.H{"merchant_id": merchantID, "decisions": []interface{}{}})
-		})
-		api.GET("/approvals/pending", func(c *gin.Context) {
-			merchantID := c.GetString("merchant_id")
-			c.JSON(http.StatusOK, gin.H{"merchant_id": merchantID, "pending": []interface{}{}})
-		})
-		api.POST("/approvals/:id/approve", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"status": "approved", "id": c.Param("id")})
-		})
-		api.POST("/approvals/:id/reject", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"status": "rejected", "id": c.Param("id")})
-		})
+		api.GET("/orders", dashboardHandler.Orders)
+		api.GET("/customers", dashboardHandler.Customers)
+		api.GET("/ai/decisions", dashboardHandler.Decisions)
+		api.GET("/approvals/pending", dashboardHandler.PendingApprovals)
+		api.POST("/approvals/:id/approve", dashboardHandler.DecideApproval("approved"))
+		api.POST("/approvals/:id/reject", dashboardHandler.DecideApproval("rejected"))
 
 		// GDPR/CCPA compliance - data deletion
 		api.DELETE("/customers/:id", func(c *gin.Context) {

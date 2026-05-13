@@ -30,7 +30,7 @@ from typing import Optional, Any
 # Crew:    the team — combines agents and defines how they collaborate
 # Process: Process.hierarchical = manager-led (FinanceAgent approves all big moves)
 from crewai import Agent, Task, Crew, Process
-from crewai.tools import BaseTool  # base class for all custom tools
+from langchain_core.tools import BaseTool  # base class for all custom tools
 
 # ── LangChain LLM connectors ──────────────────────────────────────────────────
 from langchain_openai import ChatOpenAI

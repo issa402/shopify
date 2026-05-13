@@ -1,56 +1,24 @@
 import {
   Page, Layout, Card, DataTable, Badge, Text,
-  BlockStack, Tabs,
-  InlineGrid,
+  BlockStack, Tabs, InlineGrid, Banner, Spinner, Box,
 } from '@shopify/polaris'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { apiGet, formatMoney } from '../api'
 
-const agentDecisions = [
-  {
-    id: 'dec_001',
-    agent: 'SupportAgent',
-    action: 'Issued refund of $45.00',
-    order: '#10228',
-    customer: 'Emily Walsh',
-    model: 'claude-3-5-sonnet',
-    cost: '$0.004',
-    outcome: 'success',
-    time: '2 min ago',
-  },
-  {
-    id: 'dec_002',
-    agent: 'LogisticsAgent',
-    action: 'Drafted PO for Supplier XYZ - 200 units',
-    order: 'N/A',
-    customer: 'N/A',
-    model: 'claude-3-5-sonnet',
-    cost: '$0.006',
-    outcome: 'pending_approval',
-    time: '15 min ago',
-  },
-  {
-    id: 'dec_003',
-    agent: 'FinanceAgent',
-    action: 'Rejected refund request - margin below 15%',
-    order: '#10225',
-    customer: 'David Park',
-    model: 'claude-3-5-sonnet',
-    cost: '$0.003',
-    outcome: 'success',
-    time: '32 min ago',
-  },
-  {
-    id: 'dec_004',
-    agent: 'SupportAgent',
-    action: 'Classified ticket as URGENT',
-    order: '#10224',
-    customer: 'Sarah Kim',
-    model: 'ollama:llama3:8b',
-    cost: '$0.000',
-    outcome: 'success',
-    time: '1 hr ago',
-  },
-]
+interface Decision {
+  id: string
+  agent: string
+  task_type: string
+  model: string
+  cost_usd: number
+  outcome: string
+  created_at: string
+}
+
+interface DecisionResponse {
+  setup_required?: boolean
+  decisions?: Decision[]
+}
 
 const outcomeBadge = (outcome: string) => {
   switch (outcome) {
@@ -58,18 +26,33 @@ const outcomeBadge = (outcome: string) => {
     case 'pending_approval': return <Badge tone="attention">Pending Approval</Badge>
     case 'escalated': return <Badge tone="warning">Escalated</Badge>
     case 'failure': return <Badge tone="critical">Failed</Badge>
-    default: return <Badge>{outcome}</Badge>
+    default: return <Badge>{outcome || 'Unknown'}</Badge>
   }
 }
 
 const modelBadge = (model: string) => {
   if (model.includes('ollama')) return <Badge tone="success">Local</Badge>
   if (model.includes('claude')) return <Badge tone="info">Claude</Badge>
-  return <Badge>GPT-4</Badge>
+  if (model.includes('gpt') || model.includes('o1')) return <Badge>OpenAI</Badge>
+  return <Badge>{model || 'Unknown'}</Badge>
 }
 
 export default function AgentLogs() {
   const [selected, setSelected] = useState(0)
+  const [decisions, setDecisions] = useState<Decision[]>([])
+  const [setupRequired, setSetupRequired] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    apiGet<DecisionResponse>('/ai/decisions')
+      .then(data => {
+        setSetupRequired(Boolean(data.setup_required))
+        setDecisions(data.decisions || [])
+      })
+      .catch(err => setError(err instanceof Error ? err.message : 'Decision API failed'))
+      .finally(() => setLoading(false))
+  }, [])
 
   const tabs = [
     { id: 'all', content: 'All Actions', panelID: 'all' },
@@ -78,60 +61,57 @@ export default function AgentLogs() {
     { id: 'finance', content: 'Finance Agent', panelID: 'finance' },
   ]
 
-  const rows = agentDecisions.map(d => [
-    d.time,
+  const filtered = useMemo(() => {
+    const agent = tabs[selected]?.content.replace(' Agent', '')
+    if (selected === 0) return decisions
+    return decisions.filter(d => d.agent.toLowerCase().includes(agent.toLowerCase()))
+  }, [decisions, selected])
+
+  const rows = filtered.map(d => [
+    new Date(d.created_at).toLocaleString(),
     d.agent,
-    d.action,
-    d.order,
+    d.task_type,
     modelBadge(d.model),
-    d.cost,
+    formatMoney(d.cost_usd),
     outcomeBadge(d.outcome),
   ])
 
-  return (
-    <Page
-      title="Agent Activity Log"
-      subtitle="Every AI decision, fully auditable"
-    >
-      <Layout>
-        {/* Stats row */}
-        <Layout.Section>
-          <InlineGrid columns={3} gap="400">
-            <Card>
-              <BlockStack gap="100">
-                <Text variant="bodySm" tone="subdued" as="p">Total Actions Today</Text>
-                <Text variant="headingXl" as="p">61</Text>
-                <Text variant="bodySm" tone="success" as="p">↑ 60% above average</Text>
-              </BlockStack>
-            </Card>
-            <Card>
-              <BlockStack gap="100">
-                <Text variant="bodySm" tone="subdued" as="p">Actions via Local AI (Free)</Text>
-                <Text variant="headingXl" as="p">72%</Text>
-                <Text variant="bodySm" tone="success" as="p">Saving ~$3.20 vs all-API</Text>
-              </BlockStack>
-            </Card>
-            <Card>
-              <BlockStack gap="100">
-                <Text variant="bodySm" tone="subdued" as="p">Autonomous Resolution Rate</Text>
-                <Text variant="headingXl" as="p">89%</Text>
-                <Text variant="bodySm" tone="success" as="p">11% escalated to human</Text>
-              </BlockStack>
-            </Card>
-          </InlineGrid>
-        </Layout.Section>
+  const localActions = decisions.filter(d => d.model.includes('ollama')).length
+  const successCount = decisions.filter(d => d.outcome === 'success').length
 
-        {/* Decision log */}
-        <Layout.Section>
-          <Card>
-            <Tabs tabs={tabs} selected={selected} onSelect={setSelected} />
-            <DataTable
-              columnContentTypes={['text', 'text', 'text', 'text', 'text', 'numeric', 'text']}
-              headings={['Time', 'Agent', 'Action Taken', 'Order', 'Model', 'Cost', 'Outcome']}
-              rows={rows}
-            />
-          </Card>
-        </Layout.Section>
+  return (
+    <Page title="Agent Activity Log" subtitle="Every recorded AI decision from the database">
+      <Layout>
+        {error && <Layout.Section><Banner tone="critical"><Text as="p">{error}</Text></Banner></Layout.Section>}
+        {setupRequired && <Layout.Section><Banner tone="warning"><Text as="p">No Shopify merchant is installed yet, so there is no decision ledger to display.</Text></Banner></Layout.Section>}
+        {loading && <Layout.Section><Box padding="500"><Spinner accessibilityLabel="Loading decisions" /></Box></Layout.Section>}
+
+        {!loading && (
+          <>
+            <Layout.Section>
+              <InlineGrid columns={3} gap="400">
+                <Card><BlockStack gap="100"><Text variant="bodySm" tone="subdued" as="p">Total Actions</Text><Text variant="headingXl" as="p">{decisions.length}</Text></BlockStack></Card>
+                <Card><BlockStack gap="100"><Text variant="bodySm" tone="subdued" as="p">Actions via Local AI</Text><Text variant="headingXl" as="p">{localActions}</Text></BlockStack></Card>
+                <Card><BlockStack gap="100"><Text variant="bodySm" tone="subdued" as="p">Successful Decisions</Text><Text variant="headingXl" as="p">{successCount}</Text></BlockStack></Card>
+              </InlineGrid>
+            </Layout.Section>
+
+            <Layout.Section>
+              <Card>
+                <Tabs tabs={tabs} selected={selected} onSelect={setSelected} />
+                {rows.length > 0 ? (
+                  <DataTable
+                    columnContentTypes={['text', 'text', 'text', 'text', 'numeric', 'text']}
+                    headings={['Time', 'Agent', 'Task', 'Model', 'Cost', 'Outcome']}
+                    rows={rows}
+                  />
+                ) : (
+                  <Box padding="400"><Text as="p" tone="subdued">No AI decisions match this view yet.</Text></Box>
+                )}
+              </Card>
+            </Layout.Section>
+          </>
+        )}
       </Layout>
     </Page>
   )
