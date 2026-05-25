@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import difflib
 import json
 import os
 import sys
@@ -113,7 +114,40 @@ def pokemon_search(query: str, limit: int) -> list[dict[str, Any]]:
         "orderBy": "name",
     }
     data = fetch_json(f"{POKEMONTCG}/cards?{urlencode(params)}", ttl=1800)
-    return data.get("data", [])
+    cards = data.get("data", [])
+    if cards:
+        return cards
+
+    # Fallback for lowercase, partial, or slightly misspelled searches.
+    # PokemonTCG does not provide true fuzzy search, so fetch a broader candidate
+    # set using stable token prefixes, then rank locally by close name matches.
+    tokens = [token.strip() for token in query.replace("-", " ").split() if len(token.strip()) >= 3]
+    if not tokens:
+        return []
+    broad_terms = " ".join(f'name:*{quote_token(token[:4])}*' for token in tokens[:2])
+    params = {
+        "q": broad_terms,
+        "pageSize": max(limit * 4, 20),
+        "orderBy": "name",
+    }
+    data = fetch_json(f"{POKEMONTCG}/cards?{urlencode(params)}", ttl=1800)
+    candidates = data.get("data", [])
+    return sorted(candidates, key=lambda card: search_score(query, card), reverse=True)[:limit]
+
+
+def quote_token(token: str) -> str:
+    return "".join(ch for ch in token if ch.isalnum())
+
+
+def search_score(query: str, card: dict[str, Any]) -> float:
+    name = str(card.get("name") or "")
+    set_name = str(get_nested(card, "set.name") or "")
+    haystack = f"{name} {set_name}".lower()
+    needle = query.lower()
+    ratio = difflib.SequenceMatcher(None, needle, haystack).ratio()
+    token_bonus = sum(0.2 for token in needle.split() if token[:4] and token[:4] in haystack)
+    price_bonus = 0.1 if best_tcg_market(card)[1] is not None else 0.0
+    return ratio + token_bonus + price_bonus
 
 
 def pokemon_card(card_id: str) -> dict[str, Any]:

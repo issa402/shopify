@@ -4,6 +4,12 @@ Rabbitmq_publisher : So we use a TCP connection to RabbitMQ broker. Create chann
 
 queue_report.py: SCRIPT TO CHECK IF RABBITMQ IS UP AND RUNNING HEALTHY. FIRST CONNECTS TO RABBITAMQP AND RABBITMGMT WHICH IS A MANAGMENT TOOL TO SEE RABBITMQ DIAGNOSTICS BY LOGGING IN WITH USERNAME AND PASSWORD. CLASS QUEUEREPORTER TAKES IN TWO ARGUMENTS WHIHC ARE CONNECTION URLS. ASYNC DEF CHECK CONNECTION CONNETCS TO AMQP. CHECK QUEUES AMQP TAKES IN THE QUEUE NAME WHCIH IS ONLY listing we only have one queue name and that can be confirmed in TCG AND EBAY SERVCIES WHERE THEY APPENDED A LISTING PAYLOAD CALLED LISTINGS. IT CHECKS FOR EACH QNAME. ALSO aio_pika talks to RabbitMq and httpx handles the HTTP requests for the Mnagment Rabbitmq. SO FIRST IT OPENS A CONNECTION THEN A CHANNEL IT ITERATES THROUGH EACH QUEUE NAME IF EXISTS BY using **channel.declare_queue(passive =True)** which means dont touch it just inspect.  the **queue.declarations_result.message_count** checks how many messages are inside the 'listing' queue. The **declaration_result.consumer_count** checks how many messages are sitting in the listings queue. Inside it also chceks if that specific queue names exists if Not rabbitmq kills the channel and onto the next queue and once outer loop existed returns error if couldnt expect queues. The CHECK_MGMT_STATS it first opens a HTTP client . Then hits the the rabbitmq web api  using client.get . Initialzie data to grab all json and then using data.get for the paremeter queue totals and parse the JSN to find the total message count across eveyr queue on the server not just one named listing. Then finally main creates an insnace of the QUEUEReporter and runs the functions inside using await. EVERY PYTHON FILE WILL ALWAYS BE MAIN ITS JUST HOW ETHYRE PORGRAMMED SO IF NAME WILL ALWAYS EQUAL MAIN. **Asyncio.run(main())** means stars the asynchronous event loop to power all await commands
 
+RabbitMQ in PokemonTool now: RabbitMQ is not an eBay webhook. RabbitMQ is the internal message bus. The Python api-consumer scans eBay/PokeTCG on a schedule or immediate trigger, publishes listing messages into RabbitMQ, and the Go server worker consumes those messages. The Go worker then writes alerts/card listing snapshots into Postgres and pushes live frontend notifications through SSE. If RabbitMQ is running all night but the scanner does not publish a new listing, RabbitMQ alone does not create new alerts.
+
+30 minute scanner loop: SCRAPING_INTERVAL_MINUTES controls the regular scanner interval. We also added immediate scan behavior when a user adds a new watchlist item, so the user should not always have to wait for the 30 minute loop after adding a new card.
+
+Alert dedupe: eBay itemId is stored as listing_id. Alerts use a unique partial index on user_id + marketplace + listing_id so the same eBay listing should not keep creating duplicate alerts every 30 minutes.
+
 ===================== GITHUB ========================
 git init: initilaize git
 git remote add origin https:// link: add git repo to the remote
@@ -15,6 +21,11 @@ git reflog: shows commits history
 git reset --soft HEAD@{1}: means go back one
 git update-ref -d HEAD: deletes the HEAD pointer entirely but files stay exactly where they are but GIT forgets the commit ever existsed.
 git rm -r --cached: removes everything it was tracking but doesnt delete the file
+git branch: shows local branches and the star means the current branch
+git pull: only works cleanly when the current branch has upstream tracking set
+git pull origin infra_future_standard: pulls branch infra_future_standard from remote named origin
+git branch --set-upstream-to=origin/infra_future_standard infra_future_standard: tells Git that local branch infra_future_standard tracks origin/infra_future_standard
+Why git pull failed before: typing git pull infra_future_standard treated infra_future_standard like a remote repository name, not a branch name. Git expects git pull REMOTE BRANCH, like git pull origin infra_future_standard.
 
 ===================== GITHUB / GIT HOOKS ========================
 .githooks/: This is a folder for custom Git hooks. Git hooks are small scripts that Git runs automatically at certain moments. This is DevOps work, but it is local DevOps, meaning it runs on your laptop before GitHub sees anything. CI/CD usually runs in GitHub Actions after code is pushed or opened in a pull request. Git hooks are earlier protection.
@@ -157,9 +168,17 @@ nginx ssl configuration: to listen on 443 with SSL to use both cert + key but mu
 
 ==================DOCKER =================================================
 docker compose up -d : is to run everything in the docker-compose.yml 
+docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d postgres redis rabbitmq poketcg server api-consumer client: starts only the required Pokemon self-host services and skips optional broken services
+docker compose -f docker-compose.yml -f docker-compose.selfhost.yml stop: stops the Pokemon self-host stack
+docker compose -f docker-compose.yml -f docker-compose.selfhost.yml ps: shows status of the Pokemon self-host stack
+docker stop pokemontool_client: stops only the LAN-facing Pokemon frontend container
+docker stop shopify-web-1 shopify-gateway-1 shopify-ai-1: stops only the three root Shopify app containers by exact container name
+docker compose -f docker-compose.dev.yml stop web gateway ai: stops the three Shopify app services through the correct root compose file
 docker inspect {container_name}: inspect everythign in the contianer for image to network everything
 We made services talk to local host only by doing this :  ports: - "127.0.0.1:5432:5432" 
+We made the Pokemon self host safer by doing this: client uses "0.0.0.0:5173:80" so a LAN/VPN browser can reach the app, but server uses "127.0.0.1:3001:3001" so the Go API is not directly open to the LAN. The client nginx proxies /api to server:3001 inside Docker.
 Use sudo ss -tulpn to see the services running You will now see: cp    LISTEN  0        4096           127.0.0.1:5672           0.0.0.0:* (Means who am i talking to )     users:(("docker-proxy",pid=1665170,fd=7))  
+ss -ltnp: shows listening TCP ports. 0.0.0.0:5173 means every network interface on this machine can receive traffic for that port. 127.0.0.1:3001 means only this same machine can reach that port.
 In the bottom of the docker file where it says volumes the pgdata has to always be pokevend_pgdata since that has our original data. 
 docker compose down stops every container(it doesnt delete any data)
 This line shows us the size of the volume du means disk usage and -s means summary, and h means human readable : sudo du -sh /var/lib/docker/volumes/{pokemon_pgdata,pokevend_pgdata,prediction-engine_postgres_data}
@@ -171,6 +190,7 @@ This line chekcs how much a service is being used : docker exec -it pokemontool_
 To see where specific things are use: grep -r "Redis" or grep -r "redis" services/api-consumer
 This line checks docker lines: docker compose logs --tail=10
 docker compose config --services: Shows all services started by docker
+docker compose config: renders the final merged compose config after all -f files and overrides. This is how we confirmed the self-host override changed server ports instead of accidentally duplicating them.
 docker compose stop grafana: stops the service
 docker compose up -d grafana: starts the service wihtout watch mode
 docker compose up grafana: starts the services with watch mode
@@ -202,6 +222,7 @@ In the nginx-docker /default.conf you must add the two servers one for port 80 a
 docker run -d \ (newline) --name nginx \ --network app-net \ -p 8080:80 \ -p 8443:443 \ -v $(pwd)/default.conf:/etc/nginx/conf.d/default.conf:ro \ -v $(pwd)/ssl:/etc/nginx/ssl:ro \ nginx:stable : "--network app-net" means same network as backend container, "-p 8080:80" means vm port 8080 ngingx HTTP for redirect, -p 8443:443 means vm port 8443 _. Nginx HTTPS, -v default.conf means mount your config into container, -v ssl: mount cert + key into /etc/nginx/ssl
 RECAP: FULL PATH IS HOST-> 8080(HTTP) / 8443(HTTPS)->VirtualBox Port forwarding -> VM 8080 /8443 -> Docker Port Mapping ->Nginx Container(HTTP->HTTPS +SSL termination) ->DOCKER NETWORK(app-net) -> backend container(Flask on 5000)
 0.0.0.0:8080->80/tcp means on all network interfaces on the host so it means accept all connections, 8080 is the host(vm) port when something inside the vm connects to 127.0.0.1:8080  Docker will forward that traffic into a container and ->80 is the container port which is inside the ngnix container so nginx is listening on port 80 SO ON THE VM listen on port 8080 on all interfcaes and forward that traffic into the containers port 80(TCP)
+Important internet mental model: 0.0.0.0 on your laptop does not automatically mean the whole internet can reach it. It means the laptop accepts traffic on all its own interfaces. For a random person outside your house to reach it, your router also needs to forward a public port to the laptop, or you need a tunnel/VPN/funnel service, or the laptop must have a real public IP.
 In docker compose-yml always include : restart: unless-stopped; So that the containers auto start after the VM rebooot and any crash
 docker compose down: stops contianers
 docker compose up -d --build: Rebuilds backend image and restarts containers with new image
@@ -216,6 +237,23 @@ docker exec -it backend sh: creates a shell inside backend so you can run whoami
 ========================== POKEMON PYTHON STACK ==========================
 Everything for python is under services/
 ONLY IN analytics-engine and api-consumer
+
+========================== POKEMON APP / POKETCG / EBAY ==========================
+PokemonTool is the card market intelligence app. The main product loop is: user searches a card with PokeTCG, selects the exact card/set, sees market price, chooses a target below market, and the scanner looks for eBay listings at or under that target.
+
+PokeTCG is the exact card + raw market price source. It gives things like card ID, set, number, image, tcgplayer market, cardmarket trend, and updated dates. It is the heart of exact card selection because "Charizard" by itself is too vague.
+
+eBay is the active listing source. eBay is where we look for real current listings, especially slabs, because PokeTCG raw price data does not give complete graded/slab market data.
+
+Raw vs slab logic: RAW watchlist rows should not alert on slab listings. SLAB rows should match a specific slab tier like PSA_10 or PSA_9. ALL_SLABS creates scan targets for major grades like PSA 10/9/8/7, CGC 10/9.5/9, and BGS 10/9.5/9.
+
+Language preference: watchlist/live eBay lookup supports BOTH, ENGLISH, or JAPANESE. This is title based because eBay listings do not always give perfect structured language data. Japanese detection uses title terms like Japanese, Japan, JP, JPN, Split Earth, E4, and Pokemon Card Game. English detection uses terms like English, ENG, WOTC, and Black Star Promo.
+
+Slab snapshots: card_listings stores active eBay observations by card ID, slab tier, price, title, URL, and language. The frontend slab summary shows the cheapest observed listings per tier. If a tier looks weird, like PSA 9 higher/lower than 9.5, remember these are active listing asks, not guaranteed sold comps or fair market value.
+
+Live eBay lookup: user-clicked lookup can search deeper than the background scanner. Background scans stay cheaper to protect eBay API quota. More pages means more eBay API calls. Showing more listings from the same returned page does not cost extra; fetching page 2/3/etc costs more API calls.
+
+Self host client URL right now: http://192.168.1.12:5173 when the client is running in self-host mode on this LAN. Another device on the same LAN can try that. A phone on cellular cannot use 192.168.1.12 because that is a private LAN IP.
 
 
 
@@ -246,6 +284,81 @@ Line create extenson if not exists "pgcrypto" : is indepotnet and pgcrypto gives
 ============================ Firewall/Networking =================================
 sudo ufw allow 8080, sudo ufw allow 8443, sudo ufw enable:Only allows those por>
 sudo ufw status verbose: shows all ports and which are allowed
+
+LAN exposure vs internet exposure: LAN exposure means another device on your Wi-Fi/private network can connect to your laptop. Internet exposure means someone outside your router can connect from the public internet. Binding Docker to 0.0.0.0 can expose a port to LAN, but it usually does not expose it to the whole internet unless the router forwards that port or a tunnel/VPN/funnel is running.
+
+Private IPs like 192.168.x.x, 10.x.x.x, and 172.16-31.x.x are not routable from the public internet. If your app URL is http://192.168.1.12:5173, only devices that can route into that private network can reach it.
+
+Safe friend test order:
+1. Start Pokemon self-host core services.
+2. Keep only client on 0.0.0.0:5173.
+3. Keep Go API, Postgres, Redis, RabbitMQ on 127.0.0.1 or Docker internal network.
+4. Test from another device on same Wi-Fi.
+5. If different Wi-Fi blocks it, use Tailscale/ZeroTier VPN.
+6. Only later consider public reverse proxy with HTTPS.
+
+Reverse proxy: Nginx/Caddy/Traefik sits in front of the app and becomes the only public entrypoint. It can terminate HTTPS on port 443 and forward requests internally to the client/API. This is better than exposing every container port.
+
+VPN: Tailscale/ZeroTier style access creates a private network between trusted devices. This is best for friends/testers because no router port forward is needed and Postgres/Redis/RabbitMQ stay private.
+
+Hysteria: Hysteria is a fast QUIC-based proxy/VPN-like tool. It is high value for censorship resistance, unreliable networks, UDP/QUIC performance, SOCKS/HTTP proxying, TUN mode, and advanced proxy forwarding. It is not the simplest first choice for this app because a normal browser user usually still needs a Hysteria client/profile, and if you are behind home NAT it does not magically make your laptop public unless there is a reachable endpoint or port forwarding/tunnel path. For our current goal, Tailscale is simpler for private friend testing, and Caddy/Nginx reverse proxy is cleaner for real public web hosting.
+
+##### TAILSCALE VPN SELF HOST TEST #####
+Tailscale is the VPN choice we used so a friend can access the Pokemon app from another network without exposing the whole app to the public internet. Tailscale gives this Linux machine a private VPN IP that starts with 100.x.x.x. Only devices in the same tailnet can reach that IP.
+
+curl -fsSL https://tailscale.com/install.sh -o /tmp/tailscale-install.sh: downloads the official Tailscale install script into /tmp. curl gets the file from the internet, -f fails on HTTP errors, -s is silent, -S still shows errors, -L follows redirects, and -o writes the output to that file.
+
+sudo sh /tmp/tailscale-install.sh: runs the installer as root because Tailscale needs to install packages and create a system service/network interface.
+
+sudo tailscale up: starts Tailscale login/authentication. It prints a login URL. Open that URL in the browser, sign in, and approve the machine into your tailnet.
+
+Login successful: means this computer joined the tailnet correctly.
+
+tailscale ip -4: prints this machine's IPv4 Tailscale IP. In our test it returned 100.91.97.106.
+
+100.91.97.106: this is the private Tailscale VPN IP for iscjmz-ThinkPad-T14s-Gen-1. Friends on the same tailnet should use this IP, not the LAN IP.
+
+docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d postgres redis rabbitmq poketcg server api-consumer client: starts the Pokemon services needed for friend testing. The -f flags merge the normal compose file with the self-host override. We intentionally start only core services and skip optional broken services.
+
+curl -I http://127.0.0.1:5173: checks if the Pokemon client responds locally on this same machine. HTTP/1.1 200 OK means nginx served the frontend.
+
+curl -I http://100.91.97.106:5173: checks if the Pokemon client responds through the Tailscale IP. HTTP/1.1 200 OK means the app is reachable over the VPN address.
+
+ss -ltnp: shows listening TCP ports. In our safe self-host state, 0.0.0.0:5173 is the frontend exposed to LAN/VPN, and 127.0.0.1:3001, 127.0.0.1:5432, 127.0.0.1:6379, 127.0.0.1:5672 are backend/database/queue ports kept local-only.
+
+http://100.91.97.106:5173: this is the URL to give a friend after they install Tailscale and join the same tailnet.
+
+Friend flow: friend installs Tailscale, logs in or accepts the invite/share, confirms they are in the same tailnet, then opens http://100.91.97.106:5173 in their browser.
+
+Important: Tailscale IP 100.91.97.106 is for remote VPN access. LAN IP 192.168.1.12 is only for devices on the same Wi-Fi/LAN. Public internet users cannot use 192.168.1.12.
+
+Security shape from our test: friend browser -> Tailscale VPN -> 100.91.97.106:5173 -> Docker client nginx -> private Docker server:3001 -> Postgres/Redis/RabbitMQ/PokeTCG internal services.
+
+docker stop pokemontool_client: emergency stop for the only network-facing Pokemon frontend. If worried about access, stop this first.
+
+docker compose -f docker-compose.yml -f docker-compose.selfhost.yml stop: stops the Pokemon self-host stack.
+
+Public internet checklist before exposing:
+- no dev auth bypass
+- HTTPS only
+- strong JWT/app secrets
+- no Postgres/Redis/RabbitMQ exposed
+- no RabbitMQ management UI exposed
+- API rate limits
+- logs checked for secrets
+- backups for Postgres
+- eBay API quota understood
+
+============================ SHOPIFY / BUSINESS DIRECTION ==========================
+PokemonTool is the market intelligence engine. Shopify should be the commerce engine. Do not force them together until the workflow is clear.
+
+PokemonTool should handle exact card lookup, market price, eBay/slab observations, under-market alerts, inventory valuation, cost basis, and repricing ideas.
+
+Shopify should handle storefront, draft products, checkout, orders, customer history, seller subscriptions, and seller operations.
+
+First useful Shopify feature: Pokemon inventory item -> Prepare Listing -> suggested price/margin -> create Shopify draft product -> seller reviews and publishes in Shopify.
+
+The stronger business is not a generic price checker. The stronger business is seller workflow: find underpriced cards, alert fast, track inventory, estimate margin, create listings, and help sellers reprice/sell faster.
 
 
 
@@ -310,4 +423,3 @@ We create getEnv since there will be an error if w euse just getenv since it onl
 
 
 Code for data freshness in pokemon postgres
-

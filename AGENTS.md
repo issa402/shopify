@@ -122,6 +122,10 @@ Use the default five-label mattpocock/skills vocabulary. See `docs/agents/triage
 
 Use the single-context domain doc layout. See `docs/agents/domain.md`.
 
+### Superpowers-style coding workflow
+
+Use the local coding-agent workflow in `docs/agents/superpowers-code.md` for non-trivial code changes. This repo does not vendor or depend on the external `obra/superpowers` plugin unless the user separately approves installing it in the Codex harness.
+
 ## Verification
 
 - For root workspace JavaScript changes, prefer `npm run lint`, `npm run test`, or focused package scripts when available.
