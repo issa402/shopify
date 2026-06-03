@@ -4,12 +4,6 @@ Rabbitmq_publisher : So we use a TCP connection to RabbitMQ broker. Create chann
 
 queue_report.py: SCRIPT TO CHECK IF RABBITMQ IS UP AND RUNNING HEALTHY. FIRST CONNECTS TO RABBITAMQP AND RABBITMGMT WHICH IS A MANAGMENT TOOL TO SEE RABBITMQ DIAGNOSTICS BY LOGGING IN WITH USERNAME AND PASSWORD. CLASS QUEUEREPORTER TAKES IN TWO ARGUMENTS WHIHC ARE CONNECTION URLS. ASYNC DEF CHECK CONNECTION CONNETCS TO AMQP. CHECK QUEUES AMQP TAKES IN THE QUEUE NAME WHCIH IS ONLY listing we only have one queue name and that can be confirmed in TCG AND EBAY SERVCIES WHERE THEY APPENDED A LISTING PAYLOAD CALLED LISTINGS. IT CHECKS FOR EACH QNAME. ALSO aio_pika talks to RabbitMq and httpx handles the HTTP requests for the Mnagment Rabbitmq. SO FIRST IT OPENS A CONNECTION THEN A CHANNEL IT ITERATES THROUGH EACH QUEUE NAME IF EXISTS BY using **channel.declare_queue(passive =True)** which means dont touch it just inspect.  the **queue.declarations_result.message_count** checks how many messages are inside the 'listing' queue. The **declaration_result.consumer_count** checks how many messages are sitting in the listings queue. Inside it also chceks if that specific queue names exists if Not rabbitmq kills the channel and onto the next queue and once outer loop existed returns error if couldnt expect queues. The CHECK_MGMT_STATS it first opens a HTTP client . Then hits the the rabbitmq web api  using client.get . Initialzie data to grab all json and then using data.get for the paremeter queue totals and parse the JSN to find the total message count across eveyr queue on the server not just one named listing. Then finally main creates an insnace of the QUEUEReporter and runs the functions inside using await. EVERY PYTHON FILE WILL ALWAYS BE MAIN ITS JUST HOW ETHYRE PORGRAMMED SO IF NAME WILL ALWAYS EQUAL MAIN. **Asyncio.run(main())** means stars the asynchronous event loop to power all await commands
 
-RabbitMQ in PokemonTool now: RabbitMQ is not an eBay webhook. RabbitMQ is the internal message bus. The Python api-consumer scans eBay/PokeTCG on a schedule or immediate trigger, publishes listing messages into RabbitMQ, and the Go server worker consumes those messages. The Go worker then writes alerts/card listing snapshots into Postgres and pushes live frontend notifications through SSE. If RabbitMQ is running all night but the scanner does not publish a new listing, RabbitMQ alone does not create new alerts.
-
-30 minute scanner loop: SCRAPING_INTERVAL_MINUTES controls the regular scanner interval. We also added immediate scan behavior when a user adds a new watchlist item, so the user should not always have to wait for the 30 minute loop after adding a new card.
-
-Alert dedupe: eBay itemId is stored as listing_id. Alerts use a unique partial index on user_id + marketplace + listing_id so the same eBay listing should not keep creating duplicate alerts every 30 minutes.
-
 ===================== GITHUB ========================
 git init: initilaize git
 git remote add origin https:// link: add git repo to the remote
@@ -21,84 +15,6 @@ git reflog: shows commits history
 git reset --soft HEAD@{1}: means go back one
 git update-ref -d HEAD: deletes the HEAD pointer entirely but files stay exactly where they are but GIT forgets the commit ever existsed.
 git rm -r --cached: removes everything it was tracking but doesnt delete the file
-git branch: shows local branches and the star means the current branch
-git pull: only works cleanly when the current branch has upstream tracking set
-git pull origin infra_future_standard: pulls branch infra_future_standard from remote named origin
-git branch --set-upstream-to=origin/infra_future_standard infra_future_standard: tells Git that local branch infra_future_standard tracks origin/infra_future_standard
-Why git pull failed before: typing git pull infra_future_standard treated infra_future_standard like a remote repository name, not a branch name. Git expects git pull REMOTE BRANCH, like git pull origin infra_future_standard.
-
-===================== GITHUB / GIT HOOKS ========================
-.githooks/: This is a folder for custom Git hooks. Git hooks are small scripts that Git runs automatically at certain moments. This is DevOps work, but it is local DevOps, meaning it runs on your laptop before GitHub sees anything. CI/CD usually runs in GitHub Actions after code is pushed or opened in a pull request. Git hooks are earlier protection.
-
-Why we made this: GitHub blocks files over 100 MB. If you accidentally commit a huge zip, video, database, docker output, or random generated file, GitHub can reject the push. The hook setup blocks big files before they get into the repo history or before they upload.
-
-core.hooksPath .githooks: Git normally looks for hooks inside .git/hooks, but that folder is not committed to the repo. By running `git config core.hooksPath .githooks`, we told this repo to use the tracked `.githooks/` folder instead. That means the hook files can live in the project and be reviewed like normal code.
-
-.githooks/pre-commit: This runs before `git commit` finishes. It checks the files that are staged with `git add`. If a staged file is too big, Git stops the commit. This protects the repo before the huge file enters Git history.
-
-.githooks/pre-push: This runs before `git push` uploads commits to GitHub. It checks the commit range Git is about to push. This matters because a big file can exist in history even if you deleted it later. GitHub still sees it during push, so the pre-push hook catches that.
-
-scripts/check-large-files.sh: This is the main Bash script with the real logic. The hook files are small on purpose. They just move to the repo root and call this script. This is cleaner because both hooks share one script instead of copying the same code twice.
-
-LARGE_FILE_LIMIT_BYTES: This variable controls the max file size. We set it to `52428800`, which is 50 MB. GitHub rejects at 100 MB, so 50 MB is a safer warning line.
-
-`#!/usr/bin/env bash`: This is called a shebang. It tells Linux to run the file with Bash.
-
-`set -euo pipefail`: This makes Bash stricter. `-e` means stop if a command fails. `-u` means error if you use a variable that was never set. `pipefail` means if one command inside a pipeline fails, the full pipeline counts as failed.
-
-`readonly LIMIT_BYTES="${LARGE_FILE_LIMIT_BYTES:-52428800}"`: This creates a variable that cannot be changed later. The `${VAR:-default}` syntax means use `LARGE_FILE_LIMIT_BYTES` if it exists, otherwise use `52428800`.
-
-`bytes_to_mib() { ... }`: This defines a Bash function. We use it to turn raw bytes into a human-readable number like 50.0 MiB.
-
-`awk -v bytes="$1" 'BEGIN { printf "%.1f MiB", bytes / 1024 / 1024 }'`: `awk` is a text/math tool. `-v bytes="$1"` passes the function argument into awk. `$1` means the first argument given to the Bash function. `printf "%.1f MiB"` prints one decimal place.
-
-`>&2`: This means print to stderr instead of normal output. Error messages should go to stderr because Git treats them like failure messages.
-
-`check_staged_files()`: This function checks files currently staged for commit.
-
-`git diff --cached --name-only --diff-filter=ACMR`: This lists staged files only. `--cached` means staged/index, not just working tree. `--name-only` prints paths only. `--diff-filter=ACMR` means Added, Copied, Modified, Renamed files. Deleted files do not need a size check.
-
-`while IFS= read -r path; do ... done`: This reads file paths line by line. `IFS=` helps preserve spaces. `-r` means do not treat backslashes as escape characters.
-
-`[[ -f "$path" ]] || continue`: This means if the path is not a regular file, skip it. This avoids errors for deleted files, folders, or submodule entries.
-
-`stat -c '%s' "$path"`: This gets the file size in bytes.
-
-`if (( size > LIMIT_BYTES )); then`: Double parentheses are Bash math mode. This checks if the file is bigger than the limit.
-
-`failed=1`: We do not instantly exit on the first big file. We mark failed so the script can report everything it finds, then return failure at the end.
-
-`check_object_range()`: This checks actual Git objects in commits. That is deeper than checking normal files, because Git push sends objects from commit history.
-
-`git rev-list --objects "$range"`: This lists every Git object in the commit range being pushed. A range like `oldsha..newsha` means everything in the new commit side that the remote does not have yet.
-
-`git cat-file -t "$object"`: This asks Git what type of object it is. We only care about `blob` objects because blobs are file contents.
-
-`git cat-file -s "$object"`: This asks Git for the blob size in bytes.
-
-`${path:-$object}`: This means use the file path if Git gave us one; if not, show the raw object hash.
-
-`check_pre_push_ranges()`: This reads data that Git automatically sends to a pre-push hook. Git gives local branch name, local commit SHA, remote branch name, and remote commit SHA.
-
-`0000000000000000000000000000000000000000`: In Git hook input, all zeroes can mean a branch is being created or deleted. If local SHA is all zeroes, that is a delete push, so we skip it.
-
-`range="${remote_sha}..${local_sha}"`: This builds the exact commit range that is about to upload.
-
-`case "${1:-}" in`: This checks the first argument passed to the script. `--staged` means run the commit check. `--pre-push` means run the push check.
-
-Overall flow:
-1. You run `git add`.
-2. You run `git commit`.
-3. `.githooks/pre-commit` runs automatically.
-4. It calls `scripts/check-large-files.sh --staged`.
-5. If no staged file is over 50 MB, the commit continues.
-6. You run `git push`.
-7. `.githooks/pre-push` runs automatically.
-8. It calls `scripts/check-large-files.sh --pre-push`.
-9. If no pushed blob is over 50 MB, Git uploads to GitHub.
-10. If something is too big, Git stops and prints the bad file.
-
-Important mental model: `.gitignore` prevents new unwanted files from being added by accident. Git hooks enforce rules when you commit or push. GitHub Actions / CI/CD runs after code reaches GitHub. So the order is `.gitignore` first, hooks second, CI/CD third.
 
 
 
@@ -131,7 +47,7 @@ To Give user sudo permissions: sudo usermod -aG sudo labuser - usermod is the sy
 sudo ss -tulpn : to see PID
 kill PID: to get rid of that service from that port
 ls -lh ~/.local/share/Trash/files: sees files in trash
-du -sh ~/.local/share/Trash/: How much space is in the Trash folder
+du -sh ~/.local/share/Trash/: How much space is in the Trash folder    
 rm -rf ~/.local/share/Trash/files/*: remove files in trash
 sudo find / -type f \( -name "*.vdi" -o -name "*.vmdk" -o -name "*.qcow2" -o -name "*.vhdx" \) 2>/dev/null: "find /" means the starting point so at the very top of the hard drive(root) searching every subfolder, "-type f means to only look for files "\( -name "*.vdi" -o -name "*.vmdk" -o -name "*.qcow2" -o -name "*.vhdx" \) the "\(" meansdont touch the parenthesis pass them directly to find command and we end it with "\)" for a space warning, "-o" means or , "2>/dev/null" means 2 means error , > means redirect that output, /dev/null is the linux black hole
 ps aux --sort=-%cpu | head -n 11: see the top 11 processes using cpu 
@@ -146,6 +62,7 @@ sudo chown john:developers report.txt: This makes John the owner of the file and
 sudo -l: means it iwll shosw the commands that all user and groups can run 
 journalctl -xe: looks at the systemd journal which is centralized digitial databse of all systems logs (-x) adds explantory help text to error messages to help you fix, (-e) immediately jumps to the very end of the lg so you see the most recent events first
 tail -f /var/log/syslog: (-f) means follows the the new lines to your screen as they happen in real time, is the specific file path where linux store global messages so from all plugins like power
+mount -t vfat /dev/sdc /mnt/flash :Linux treats everyhting like filesystems so when u plug in a usb you must create a file system and mount the usb so like 
 ###### NGINX #####
 systemctl status nginx: means check if nginx is running
 sudo shutdown now: in a virtual machine this shutdowns the virtual machine
@@ -168,17 +85,9 @@ nginx ssl configuration: to listen on 443 with SSL to use both cert + key but mu
 
 ==================DOCKER =================================================
 docker compose up -d : is to run everything in the docker-compose.yml 
-docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d postgres redis rabbitmq poketcg server api-consumer client: starts only the required Pokemon self-host services and skips optional broken services
-docker compose -f docker-compose.yml -f docker-compose.selfhost.yml stop: stops the Pokemon self-host stack
-docker compose -f docker-compose.yml -f docker-compose.selfhost.yml ps: shows status of the Pokemon self-host stack
-docker stop pokemontool_client: stops only the LAN-facing Pokemon frontend container
-docker stop shopify-web-1 shopify-gateway-1 shopify-ai-1: stops only the three root Shopify app containers by exact container name
-docker compose -f docker-compose.dev.yml stop web gateway ai: stops the three Shopify app services through the correct root compose file
 docker inspect {container_name}: inspect everythign in the contianer for image to network everything
 We made services talk to local host only by doing this :  ports: - "127.0.0.1:5432:5432" 
-We made the Pokemon self host safer by doing this: client uses "0.0.0.0:5173:80" so a LAN/VPN browser can reach the app, but server uses "127.0.0.1:3001:3001" so the Go API is not directly open to the LAN. The client nginx proxies /api to server:3001 inside Docker.
 Use sudo ss -tulpn to see the services running You will now see: cp    LISTEN  0        4096           127.0.0.1:5672           0.0.0.0:* (Means who am i talking to )     users:(("docker-proxy",pid=1665170,fd=7))  
-ss -ltnp: shows listening TCP ports. 0.0.0.0:5173 means every network interface on this machine can receive traffic for that port. 127.0.0.1:3001 means only this same machine can reach that port.
 In the bottom of the docker file where it says volumes the pgdata has to always be pokevend_pgdata since that has our original data. 
 docker compose down stops every container(it doesnt delete any data)
 This line shows us the size of the volume du means disk usage and -s means summary, and h means human readable : sudo du -sh /var/lib/docker/volumes/{pokemon_pgdata,pokevend_pgdata,prediction-engine_postgres_data}
@@ -190,7 +99,6 @@ This line chekcs how much a service is being used : docker exec -it pokemontool_
 To see where specific things are use: grep -r "Redis" or grep -r "redis" services/api-consumer
 This line checks docker lines: docker compose logs --tail=10
 docker compose config --services: Shows all services started by docker
-docker compose config: renders the final merged compose config after all -f files and overrides. This is how we confirmed the self-host override changed server ports instead of accidentally duplicating them.
 docker compose stop grafana: stops the service
 docker compose up -d grafana: starts the service wihtout watch mode
 docker compose up grafana: starts the services with watch mode
@@ -210,6 +118,8 @@ curl http://127.0.0.1:5000: shows container is running and flask is listening on
 docker network create app-net: This creates a virtual layer 2 network inside Docker,so eveyr container that gets attached to it gets its own virtual NIC( Network Interface Card) whihc acts like a private room for its network settings: the veth pair: docker creates a virual ethernet pair which acts like a virtual cable, Eth0: One end of this cable is placed inside the container as a virtual NIC,  Host connection: The other end stays on the host and connects to a virtual switch allowing the container to talk to other containers or the internet)), Internal Ip address: each container is automatically assigned its own private IP address when it starts. Subnets: Docker manage a priavte range of IPs, Dynamic Assignment: These IPs are unique within the network. You dont have to worry about IP conflicts between containers because the Docker daemon manages the allocation for you, Gateway: the virtual bridge itself acts as the default gateway routing traffic between the container and the outside world.)), Automatic DNS resolution: On user defined networks Docker runs an embedded DNS server that allows containers to communicate using names instead of IPs. Service Discovery: When you create a container with a name; Docker alreayd registers that name in the internal DNS, Resolution: other containers on the same network can reach it by simply pinging  mydb. Docker DNS sever resolves that name to the containers current internal IP, Reliability:  Critical because containr IP addresses can change whenever a container is restarted or recreated; names, however usually stay the same)) Contianers talk to each other by name not IPs
 docker run -d \ (newline) --name backend \ (newline) --network app-net \ (newline) backend-app:latest: the "-d" means run in background, --name backend means container name becomes backend and --network app-net means attaches it to the private Docker network, So no more port 5000 since backend is now private
 docker exec -it backend curl http://127.0.0.1:5000: pings the backend, "docker exec" is the core command which means to run a new command inside an existing container, "-i" means keep the Standard input which allows you to type anything in the container, "-t" allocates a virtual terminal which makes the screen look like a real terminal. Which enables things like color coded text , "backend" name of this ID of the container
+Docker container A -> docker bridge -> container B
+Path from a containers to the internet looks like:container 172.18.0.2-> docker bridge on host-> laptop 192.168.1.12-> router 192.168.1.1-> internet
 ##### NGINX & DOCKER ######
 mkdir -p ~/nginx-docker: the folder that will hold the nginx reverse proxy config, SSL certs
 create the config file (default.conf): which has the server and location, in the proxy pass "backend" isnt an IP its the contianer name (each container gets its own virtual NIC, INTERNAL IP, and DNS name
@@ -222,13 +132,12 @@ In the nginx-docker /default.conf you must add the two servers one for port 80 a
 docker run -d \ (newline) --name nginx \ --network app-net \ -p 8080:80 \ -p 8443:443 \ -v $(pwd)/default.conf:/etc/nginx/conf.d/default.conf:ro \ -v $(pwd)/ssl:/etc/nginx/ssl:ro \ nginx:stable : "--network app-net" means same network as backend container, "-p 8080:80" means vm port 8080 ngingx HTTP for redirect, -p 8443:443 means vm port 8443 _. Nginx HTTPS, -v default.conf means mount your config into container, -v ssl: mount cert + key into /etc/nginx/ssl
 RECAP: FULL PATH IS HOST-> 8080(HTTP) / 8443(HTTPS)->VirtualBox Port forwarding -> VM 8080 /8443 -> Docker Port Mapping ->Nginx Container(HTTP->HTTPS +SSL termination) ->DOCKER NETWORK(app-net) -> backend container(Flask on 5000)
 0.0.0.0:8080->80/tcp means on all network interfaces on the host so it means accept all connections, 8080 is the host(vm) port when something inside the vm connects to 127.0.0.1:8080  Docker will forward that traffic into a container and ->80 is the container port which is inside the ngnix container so nginx is listening on port 80 SO ON THE VM listen on port 8080 on all interfcaes and forward that traffic into the containers port 80(TCP)
-Important internet mental model: 0.0.0.0 on your laptop does not automatically mean the whole internet can reach it. It means the laptop accepts traffic on all its own interfaces. For a random person outside your house to reach it, your router also needs to forward a public port to the laptop, or you need a tunnel/VPN/funnel service, or the laptop must have a real public IP.
 In docker compose-yml always include : restart: unless-stopped; So that the containers auto start after the VM rebooot and any crash
 docker compose down: stops contianers
 docker compose up -d --build: Rebuilds backend image and restarts containers with new image
 In the dockerfile create adduser and a non root user also change ownership so the user can read the files and switch to the non root user and insdie the docker-compose.yml update it so backend is read only and cap_drop drops all linux capabilities and cap add only allows binding to low ports if needed,must rebuild aftewards 
 docker exec -it backend sh: creates a shell inside backend so you can run whoami
-
+ip -br addr: Shows ip addresses with status whether up or down and newtorks
 
 
 
@@ -238,25 +147,8 @@ docker exec -it backend sh: creates a shell inside backend so you can run whoami
 Everything for python is under services/
 ONLY IN analytics-engine and api-consumer
 
-========================== POKEMON APP / POKETCG / EBAY ==========================
-PokemonTool is the card market intelligence app. The main product loop is: user searches a card with PokeTCG, selects the exact card/set, sees market price, chooses a target below market, and the scanner looks for eBay listings at or under that target.
-
-PokeTCG is the exact card + raw market price source. It gives things like card ID, set, number, image, tcgplayer market, cardmarket trend, and updated dates. It is the heart of exact card selection because "Charizard" by itself is too vague.
-
-eBay is the active listing source. eBay is where we look for real current listings, especially slabs, because PokeTCG raw price data does not give complete graded/slab market data.
-
-Raw vs slab logic: RAW watchlist rows should not alert on slab listings. SLAB rows should match a specific slab tier like PSA_10 or PSA_9. ALL_SLABS creates scan targets for major grades like PSA 10/9/8/7, CGC 10/9.5/9, and BGS 10/9.5/9.
-
-Language preference: watchlist/live eBay lookup supports BOTH, ENGLISH, or JAPANESE. This is title based because eBay listings do not always give perfect structured language data. Japanese detection uses title terms like Japanese, Japan, JP, JPN, Split Earth, E4, and Pokemon Card Game. English detection uses terms like English, ENG, WOTC, and Black Star Promo.
-
-Slab snapshots: card_listings stores active eBay observations by card ID, slab tier, price, title, URL, and language. The frontend slab summary shows the cheapest observed listings per tier. If a tier looks weird, like PSA 9 higher/lower than 9.5, remember these are active listing asks, not guaranteed sold comps or fair market value.
-
-Live eBay lookup: user-clicked lookup can search deeper than the background scanner. Background scans stay cheaper to protect eBay API quota. More pages means more eBay API calls. Showing more listings from the same returned page does not cost extra; fetching page 2/3/etc costs more API calls.
-
-Self host client URL right now: http://192.168.1.12:5173 when the client is running in self-host mode on this LAN. Another device on the same LAN can try that. A phone on cellular cannot use 192.168.1.12 because that is a private LAN IP.
-
-
-
+######### Promethues.yml ###########
+ells Prometheus where to collect metrics. Prometheus does not know your Go app automatically; it repeatedly calls http://server:3001/metrics, reads metric names like pokemon_data_freshness_age_minutes, stores them over time, and adds labels like job="pokemon-server" and instance="server:3001".
 
 =========================== GRAFANA ======================================
 For Grafana you must add two other services along side wiht it in the docker compose file.
@@ -264,13 +156,26 @@ loki: is the log storage that store all of our docker logs
 promtail: is what extracts the logs from loki and sends it to grafana which is the dashboard
 {container=~".+"}: Means show me every container that has a name
 
+
 =========================== BASH SCRIPTS ====================================
 -dev-startup.sh:
 set -eou pipefail: "-e" means exit immediately if any command returns zero, "u": treeats unset varibales as an error. If no varibale has been assigned its an eror. "o pipefail" : change the return status of a pipeline.
 Variables Must Not Be Spaced
 SCRIPTS_DIR=$(cd -- "$(dirname -- "$0")" && pwd) the parenthesis insid eexecute first and the "--" means safety check, dirname gets the diretcory naem and the $0 is the last one in the line. 
-
-
+############ BASH ################
+rg -n "errror": looks for lines that have error
+rg "Data": Looks for files that have Data
+curl -fsS http://localhost:3001/health >/dev/null: "-f" means failed, "s" means silent and "S" means show error
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)": ${BASH_SOURCE[0]} is the script file path.
+if docker ps --format '{{.Names}}' | grep -qx "pokemontool_postgres"; then: '{{.Names}}' is the column
+while IFS= read -r line;: "IFS" means It tells Bash which characters to use when splitting a line into words. The "-r" means / dont get interperted as escape characters, "line" is simply a variable name
+done < file.txt: redirectts to file.txt
+awk '{print $1}' logs/2026-04-05T01:34:41/go.log | uniq -c: awk print $1 means first column and uniq -c means the count of each unique one
+man systemctl: shows all the keywords with explanations
+systemctl -- (press tab twice): Shows all the keywords
+grep -iE "error|fatal|panic" : the "i" means incase insensitive and the "E" means extended regex which allows us to use more than one "|"
+today="$(date +%F)": get todays date
+df -h | awk '{print $1, $2}' | column -t: "column -t" make it nicer and readable
 ============================ POSTGRES ==========================================
 .env: All Configuration Requiremnts(such as Database Host, User, Password Etc) 
 config.go: grabs all config requirements and puts it into a function Load
@@ -284,81 +189,15 @@ Line create extenson if not exists "pgcrypto" : is indepotnet and pgcrypto gives
 ============================ Firewall/Networking =================================
 sudo ufw allow 8080, sudo ufw allow 8443, sudo ufw enable:Only allows those por>
 sudo ufw status verbose: shows all ports and which are allowed
-
-LAN exposure vs internet exposure: LAN exposure means another device on your Wi-Fi/private network can connect to your laptop. Internet exposure means someone outside your router can connect from the public internet. Binding Docker to 0.0.0.0 can expose a port to LAN, but it usually does not expose it to the whole internet unless the router forwards that port or a tunnel/VPN/funnel is running.
-
-Private IPs like 192.168.x.x, 10.x.x.x, and 172.16-31.x.x are not routable from the public internet. If your app URL is http://192.168.1.12:5173, only devices that can route into that private network can reach it.
-
-Safe friend test order:
-1. Start Pokemon self-host core services.
-2. Keep only client on 0.0.0.0:5173.
-3. Keep Go API, Postgres, Redis, RabbitMQ on 127.0.0.1 or Docker internal network.
-4. Test from another device on same Wi-Fi.
-5. If different Wi-Fi blocks it, use Tailscale/ZeroTier VPN.
-6. Only later consider public reverse proxy with HTTPS.
-
-Reverse proxy: Nginx/Caddy/Traefik sits in front of the app and becomes the only public entrypoint. It can terminate HTTPS on port 443 and forward requests internally to the client/API. This is better than exposing every container port.
-
-VPN: Tailscale/ZeroTier style access creates a private network between trusted devices. This is best for friends/testers because no router port forward is needed and Postgres/Redis/RabbitMQ stay private.
-
-Hysteria: Hysteria is a fast QUIC-based proxy/VPN-like tool. It is high value for censorship resistance, unreliable networks, UDP/QUIC performance, SOCKS/HTTP proxying, TUN mode, and advanced proxy forwarding. It is not the simplest first choice for this app because a normal browser user usually still needs a Hysteria client/profile, and if you are behind home NAT it does not magically make your laptop public unless there is a reachable endpoint or port forwarding/tunnel path. For our current goal, Tailscale is simpler for private friend testing, and Caddy/Nginx reverse proxy is cleaner for real public web hosting.
-
-##### TAILSCALE VPN SELF HOST TEST #####
-Tailscale is the VPN choice we used so a friend can access the Pokemon app from another network without exposing the whole app to the public internet. Tailscale gives this Linux machine a private VPN IP that starts with 100.x.x.x. Only devices in the same tailnet can reach that IP.
-
-curl -fsSL https://tailscale.com/install.sh -o /tmp/tailscale-install.sh: downloads the official Tailscale install script into /tmp. curl gets the file from the internet, -f fails on HTTP errors, -s is silent, -S still shows errors, -L follows redirects, and -o writes the output to that file.
-
-sudo sh /tmp/tailscale-install.sh: runs the installer as root because Tailscale needs to install packages and create a system service/network interface.
-
-sudo tailscale up: starts Tailscale login/authentication. It prints a login URL. Open that URL in the browser, sign in, and approve the machine into your tailnet.
-
-Login successful: means this computer joined the tailnet correctly.
-
-tailscale ip -4: prints this machine's IPv4 Tailscale IP. In our test it returned 100.91.97.106.
-
-100.91.97.106: this is the private Tailscale VPN IP for iscjmz-ThinkPad-T14s-Gen-1. Friends on the same tailnet should use this IP, not the LAN IP.
-
-docker compose -f docker-compose.yml -f docker-compose.selfhost.yml up -d postgres redis rabbitmq poketcg server api-consumer client: starts the Pokemon services needed for friend testing. The -f flags merge the normal compose file with the self-host override. We intentionally start only core services and skip optional broken services.
-
-curl -I http://127.0.0.1:5173: checks if the Pokemon client responds locally on this same machine. HTTP/1.1 200 OK means nginx served the frontend.
-
-curl -I http://100.91.97.106:5173: checks if the Pokemon client responds through the Tailscale IP. HTTP/1.1 200 OK means the app is reachable over the VPN address.
-
-ss -ltnp: shows listening TCP ports. In our safe self-host state, 0.0.0.0:5173 is the frontend exposed to LAN/VPN, and 127.0.0.1:3001, 127.0.0.1:5432, 127.0.0.1:6379, 127.0.0.1:5672 are backend/database/queue ports kept local-only.
-
-http://100.91.97.106:5173: this is the URL to give a friend after they install Tailscale and join the same tailnet.
-
-Friend flow: friend installs Tailscale, logs in or accepts the invite/share, confirms they are in the same tailnet, then opens http://100.91.97.106:5173 in their browser.
-
-Important: Tailscale IP 100.91.97.106 is for remote VPN access. LAN IP 192.168.1.12 is only for devices on the same Wi-Fi/LAN. Public internet users cannot use 192.168.1.12.
-
-Security shape from our test: friend browser -> Tailscale VPN -> 100.91.97.106:5173 -> Docker client nginx -> private Docker server:3001 -> Postgres/Redis/RabbitMQ/PokeTCG internal services.
-
-docker stop pokemontool_client: emergency stop for the only network-facing Pokemon frontend. If worried about access, stop this first.
-
-docker compose -f docker-compose.yml -f docker-compose.selfhost.yml stop: stops the Pokemon self-host stack.
-
-Public internet checklist before exposing:
-- no dev auth bypass
-- HTTPS only
-- strong JWT/app secrets
-- no Postgres/Redis/RabbitMQ exposed
-- no RabbitMQ management UI exposed
-- API rate limits
-- logs checked for secrets
-- backups for Postgres
-- eBay API quota understood
-
-============================ SHOPIFY / BUSINESS DIRECTION ==========================
-PokemonTool is the market intelligence engine. Shopify should be the commerce engine. Do not force them together until the workflow is clear.
-
-PokemonTool should handle exact card lookup, market price, eBay/slab observations, under-market alerts, inventory valuation, cost basis, and repricing ideas.
-
-Shopify should handle storefront, draft products, checkout, orders, customer history, seller subscriptions, and seller operations.
-
-First useful Shopify feature: Pokemon inventory item -> Prepare Listing -> suggested price/margin -> create Shopify draft product -> seller reviews and publishes in Shopify.
-
-The stronger business is not a generic price checker. The stronger business is seller workflow: find underpriced cards, alert fast, track inventory, estimate margin, create listings, and help sellers reprice/sell faster.
+ip a: Shows eveyr network interface on the machine . It will show in numbered order and "lo" means localhost which means the machines talks to itself when open like [http://](http://127.0.0.1:8123) and http://localhost:3001. "enp2s0f0" is the wired ethernet port and <NO-CARRIER,... state DOWN> means no ethernet cable is plugge in. "wlp3so" is the wifi and the addres which in our case is 192.168.1.12 which means another device on the home wifi could reach the machine at that IP. docker0 and br-60dbffe54fcd      172.18.0.1/16 and br-e6fc2f29c6d4      172.19.0.1/16 etc are all docker bridge networks. These are so that containers can talk to each other. The 172.xxx are private addresses Docker network inside the laptop not wifi ip. When it says No carrier state down it means no active contianers are attached to that docker network right now. So in docker compose it says ports: "127.0.0.1:5432:5432" that means postgres is only reachble from your own laptop. but when it says ports: "3001:3001" it means it may be reachable from your laptop and maybe your LAN at http://192.168.1.12:3001 like how we saw in the wlp3so
+hostname -I: Shows Ip addresses assigned to machine
+ip route: your laptop -> WIFi card -> router-> internet default via 192.168.1.1 dev wlp3s0 proto dhcp src 192.168.1.12 metric 600 . 192.168.1.1: sends traffic to router, dev wlp3so: uses wifi interfaces, protodhcp: means the route was assigned automatically by your router via DHCP, and src 192.168.1.12: Your laptop’s IP address. and metric 600: The "cost" of the route. Lower numbers are higher priority. 600 is typical for Wi-Fi. 172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 linkdown.  172.17.0.0/16: A virtual network for Docker containers. dev docker0: The virtual bridge interface Docker uses. scope link: This network is directly reachable on this interface (no router needed). linkdown: No containers are currently running on this specific bridge.
+ping -c 4 192.168.1.1: 64 bytes: The size of the test packet. icmp_seq=1: The first packet of the batch.ttl=64: "Time to Live." It means the packet can jump through 64 routers before dying. Since it's 64, it proves the router is literally one hop away. time=21.6 ms: How long the round trip took. Under 30ms on Wi-Fi is good. ping -c 4 google.com: rtt min/avg/max/mdev = 12.104/12.759/13.924/0.692 ms min: Your fastest response.avg: The average speed (14ms is very fast).max: Your slowest response.mdev: "Mean Deviation." This shows how stable the connection is. 0.295 is extremely low, meaning your Wi-Fi is rock solid with no "jitter."
+ip -br addr: Shows ip addresses with status whether up or down and newtorks
+dig +short google.com: Shows what Ip a DNS name resolves to 
+nc -vz localhost 3001: Checks TCP connection
+getent hosts github.com: see ip address
+dig github.com: see all DNS
 
 
 
@@ -416,10 +255,33 @@ All application configuration grabs from env using a struct field for orginzatio
 JWT is used forsigning so it combines both the users data with the JWTSecret to create a unique signature and for verification when the user comes back with that token the server uses the same JWTSecret to recalculate the signature . if they mathc the server know the data wasnt changed by a hacker.
 We create getEnv since there will be an error if w euse just getenv since it only checks for one value
 
+####### Healthhandler.go ##########
+defines the Pokemon health and freshness HTTP behavior. It checks whether Postgres/Redis are reachable, checks whether important business tables have recent timestamp data, turns those ages into fresh, warning, critical, or no_data, returns JSON for humans at /api/health/freshness, and prints Prometheus metrics at /metrics.
 
+=========================== CODEX DEBUG ====================================
+headroom: A user-global context compression/proxy tool for AI coding agents. In this repo it was installed at `~/.local/bin/headroom` and initialized with `headroom init --global --memory codex`. This helps future Codex sessions only after Codex restarts or is launched through Headroom; it does not lower tokens already spent in the current session.
 
+headroom wrap codex: Starts a Headroom proxy and launches Codex through it for that one session. Use this when you want the current new Codex session to route through Headroom immediately.
 
+headroom init --global --memory codex: Writes durable user-scope Codex integration so future Codex sessions know about Headroom and its memory/retrieve tooling. `--global` means current Linux user, not just this project folder. `--memory` enables Headroom's local memory layer.
 
+codex mcp list: Shows which MCP tools Codex can use. After Headroom setup, the list should include `headroom`. If a new MCP does not appear, restart Codex.
 
+npx --yes @puppeteer/browsers install chrome@stable --path <folder>: Downloads Chrome-for-Testing into a user-owned folder without needing sudo. `--yes` skips npm confirmation, `chrome@stable` chooses stable Chrome, and `--path` controls where the browser files go.
 
-Code for data freshness in pokemon postgres
+EBAY_SELLER_HUB_BROWSER_EXECUTABLE=/path/to/chrome: Environment variable used by the Pokemon Seller Hub connector to launch a real Chrome-family browser instead of Playwright's bundled Chromium. This helps with eBay verification/browser fingerprint issues.
+
+timeout 12s command: Runs a command but automatically stops it after 12 seconds. Useful for smoke-testing browser launches so a GUI process does not hang forever.
+
+python3 -m py_compile file.py: Checks whether a Python file can compile without running the whole app. Good for catching syntax/import-shape errors after editing service files.
+
+psql -U user -d database < migration.sql: Applies a SQL migration file to Postgres. In this project it was usually run through `docker exec -i pokemontool_postgres psql ...` so the SQL goes into the Postgres container.
+
+CREATE OR REPLACE FUNCTION in Postgres: Creates or updates a reusable SQL function. We used it for Seller Hub helpers so Go can ask for the latest research metric without duplicating a huge SQL block everywhere.
+
+LEFT JOIN LATERAL: Runs a small subquery once for each row from the main table. In Finder, each slab opportunity row uses it to attach the newest matching Seller Hub ACTIVE and SOLD metric.
+
+jsonb_build_object: Postgres function that builds JSON directly inside SQL. We used it to return Seller Hub metrics as one `sellerHubMetrics` object in the API response.
+
+=========================== END CODEX DEBUG ====================================
+

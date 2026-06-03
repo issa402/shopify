@@ -53,6 +53,7 @@ Remaining real-product work:
 - Repo-local instructions now live in `AGENTS.md`.
 - Installed local Codex skills include system skills under `~/.codex/skills/.system/` plus `ui-ux-pro-max`.
 - Browser Use is installed in `.codex-venvs/browser-use`; runtime config/cache are kept in ignored `.codex-browser-use/` and `.codex-cache/`.
+- Headroom is installed user-globally at `/home/iscjmz/.local/bin/headroom` and initialized for Codex with memory support. Restart Codex to activate durable routing/compression for future sessions.
 
 ## Codex Equivalents Installed
 
@@ -177,3 +178,30 @@ For any external repo:
 - Delete unneeded cloned repos or dependencies after confirming they are not used.
 - Re-run `codex mcp list`.
 - Restart Codex.
+
+## Headroom Pattern
+
+Headroom is a user-global Codex integration, not a Pokemon-only project dependency.
+
+Useful commands:
+
+```bash
+/home/iscjmz/.local/bin/headroom --version
+/home/iscjmz/.local/bin/headroom init --global --memory codex
+codex mcp list
+```
+
+What it does:
+
+- Adds Headroom's MCP retrieve tool and durable Codex routing/config for future sessions.
+- Can reduce future token usage after Codex restarts or when launched through `headroom wrap codex`.
+- Does not increase the weekly limit and does not retroactively reduce usage already spent in the current running Codex session.
+
+Rollback:
+
+```bash
+/home/iscjmz/.local/bin/headroom unwrap codex
+codex mcp list
+```
+
+Do not store API keys, eBay cookies, browser cookies, or passwords in Headroom memory.

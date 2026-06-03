@@ -1,0 +1,46 @@
+# Odoo Community storefront for Pokemon/card seller workflows.
+# Usage:
+#   docker compose -f docker-compose.odoo.yml --env-file odoo/.env up -d
+
+services:
+  odoo-db:
+    image: postgres:15-alpine
+    container_name: shopify-odoo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${ODOO_POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${ODOO_POSTGRES_USER:-odoo}
+      POSTGRES_PASSWORD: ${ODOO_POSTGRES_PASSWORD:-odoo_dev_password}
+    volumes:
+      - odoo_db_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${ODOO_POSTGRES_PORT:-55432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ODOO_POSTGRES_USER:-odoo} -d ${ODOO_POSTGRES_DB:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  odoo:
+    image: odoo:19.0
+    container_name: shopify-odoo
+    restart: unless-stopped
+    depends_on:
+      odoo-db:
+        condition: service_healthy
+    environment:
+      HOST: odoo-db
+      USER: ${ODOO_POSTGRES_USER:-odoo}
+      PASSWORD: ${ODOO_POSTGRES_PASSWORD:-odoo_dev_password}
+    ports:
+      - "127.0.0.1:${ODOO_HTTP_PORT:-8069}:8069"
+      - "127.0.0.1:${ODOO_LONGPOLL_PORT:-8072}:8072"
+    volumes:
+      - odoo_data:/var/lib/odoo
+      - ./odoo/config/odoo.conf:/etc/odoo/odoo.conf:ro
+      - ./odoo/custom_addons:/mnt/extra-addons:ro
+    command: ["odoo", "--config", "/etc/odoo/odoo.conf"]
+
+volumes:
+  odoo_db_data:
+  odoo_data:

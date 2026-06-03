@@ -77,3 +77,6 @@ temp/
 .codex-cache/
 .codex-browser-use/
 *.tsbuildinfo
+
+# Local third-party source checkouts
+/vendor/odoo/

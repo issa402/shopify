@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <template id="pokecard_store_homepage" name="PokeCard Storefront Home">
+    <t t-call="website.layout">
+      <div id="wrap" class="pokecard-storefront">
+        <section class="pcs-hero">
+          <div class="pcs-hero__inner">
+            <p class="pcs-eyebrow">Market-aware Pokemon card commerce</p>
+            <h1>Premium cards, sealed product, and seller-grade market intelligence.</h1>
+            <p class="pcs-hero__copy">
+              Buy curated singles, graded slabs, and sealed inventory with pricing context built for serious collectors and local card shops.
+            </p>
+            <div class="pcs-actions">
+              <a class="pcs-button pcs-button--primary" href="#synced-inventory">Synced inventory</a>
+              <a class="pcs-button pcs-button--secondary" href="/shop">Shop all</a>
+            </div>
+          </div>
+        </section>
+
+        <section class="pcs-band pcs-band--dark">
+          <div class="pcs-grid pcs-grid--stats">
+            <article>
+              <span>PokemonTool sync</span>
+              <strong><t t-esc="pokemon_product_count"/> live products</strong>
+              <p>Inventory marked ready in PokemonTool is published here with exact set, card number, condition, and price context.</p>
+            </article>
+            <article>
+              <span>Raw singles</span>
+              <strong><t t-esc="pokemon_raw_count"/> listed</strong>
+              <p>Raw inventory keeps PokemonTool cost basis, market value, set metadata, and storefront price in one flow.</p>
+            </article>
+            <article>
+              <span>Graded slabs</span>
+              <strong><t t-esc="pokemon_slab_count"/> listed</strong>
+              <p>Slab products carry grader, grade, certification, and market notes when those fields exist in PokemonTool.</p>
+            </article>
+          </div>
+        </section>
+
+
+        <section id="synced-inventory" class="pcs-section pcs-section--inventory">
+          <div class="pcs-section__header">
+            <p class="pcs-eyebrow">Synced from PokemonTool</p>
+            <h2>Store inventory live from your Pokemon backend.</h2>
+          </div>
+          <t t-if="pokemon_products">
+            <div class="pcs-product-grid">
+              <t t-foreach="pokemon_products" t-as="product">
+                <article class="pcs-product-card">
+                  <a t-att-href="'/shop/product/%s' % product.id" class="pcs-product-card__image">
+                    <t t-if="product.pokemon_image_url">
+                      <img t-att-src="product.pokemon_image_url" t-att-alt="product.name" loading="lazy"/>
+                    </t>
+                    <t t-else="">
+                      <div class="pcs-product-card__placeholder">PokemonTool</div>
+                    </t>
+                  </a>
+                  <div class="pcs-product-card__body">
+                    <div class="pcs-product-card__badges">
+                      <span><t t-esc="product.pokemon_asset_type or 'RAW'"/></span>
+                      <t t-if="product.pokemon_condition"><span><t t-esc="product.pokemon_condition"/></span></t>
+                    </div>
+                    <h3><a t-att-href="'/shop/product/%s' % product.id"><t t-esc="product.name"/></a></h3>
+                    <p>
+                      <t t-if="product.pokemon_set_name"><t t-esc="product.pokemon_set_name"/></t>
+                      <t t-if="product.pokemon_card_number"> #<t t-esc="product.pokemon_card_number"/></t>
+                    </p>
+                    <t t-if="product.pokemon_grader or product.pokemon_grade">
+                      <p><t t-esc="product.pokemon_grader or ''"/> <t t-esc="product.pokemon_grade or ''"/></p>
+                    </t>
+                    <div class="pcs-product-card__footer">
+                      <strong>$<t t-esc="'%.2f' % product.list_price"/></strong>
+                      <a t-att-href="'/shop/product/%s' % product.id">View</a>
+                    </div>
+                  </div>
+                </article>
+              </t>
+            </div>
+          </t>
+          <t t-else="">
+            <div class="pcs-empty-sync">
+              <strong>No PokemonTool inventory is published yet.</strong>
+              <p>Open PokemonTool inventory, choose a card, and press Add to Store. It will create an Odoo product and appear here.</p>
+            </div>
+          </t>
+        </section>
+
+        <section class="pcs-section">
+          <div class="pcs-section__header">
+            <p class="pcs-eyebrow">Storefront lanes</p>
+            <h2>Built for card sellers who need speed and confidence.</h2>
+          </div>
+          <div class="pcs-grid pcs-grid--cards">
+            <article>
+              <h3>Raw singles</h3>
+              <p>Modern chase cards, vintage staples, binder-ready inventory, and exact set variants.</p>
+            </article>
+            <article>
+              <h3>Graded slabs</h3>
+              <p>PSA, CGC, and BGS lanes with grade-specific market context and cert-backed trust.</p>
+            </article>
+            <article>
+              <h3>Sealed product</h3>
+              <p>Booster boxes, ETBs, collection boxes, and display inventory with clean fulfillment rules.</p>
+            </article>
+            <article>
+              <h3>Concierge sourcing</h3>
+              <p>Let buyers request cards while your backend watchlists and alerts help source below target.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="pcs-section pcs-section--split">
+          <div>
+            <p class="pcs-eyebrow">Why this is different</p>
+            <h2>Commerce connected to intelligence.</h2>
+          </div>
+          <div class="pcs-copy-stack">
+            <p>
+              The long-term edge is not another pretty card shop. The edge is connecting storefront inventory to PokemonTool market data, underpriced listing alerts, inventory cost basis, and repricing workflows.
+            </p>
+            <p>
+              This Odoo starter gives you the free ERP/storefront foundation: products, eCommerce, orders, customers, inventory, invoicing, and backend operations. The custom Pokemon intelligence layer can be connected next.
+            </p>
+          </div>
+        </section>
+      </div>
+    </t>
+  </template>
+
+  <record id="pokecard_storefront_menu" model="website.menu">
+    <field name="name">PokeCard Store</field>
+    <field name="url">/pokecard-store</field>
+    <field name="parent_id" ref="website.main_menu"/>
+    <field name="sequence" type="int">15</field>
+  </record>
+</odoo>

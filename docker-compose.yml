@@ -143,3 +143,22 @@ volumes:
 networks:
   default:
     name: nexusos-network
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

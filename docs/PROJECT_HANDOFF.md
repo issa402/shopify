@@ -144,6 +144,105 @@ python -B api_server.py --host 0.0.0.0 --port 8765
 - Live smoke test for listing dedupe passed: publishing the same RabbitMQ listing twice with `listing_id='dedupe-smoke-item-1'` created exactly one alert. Temporary user was deleted afterward.
 - Live smoke test for slab summary passed: publishing sample Raw, PSA 10, PSA 9, CGC 9.5, and BGS 10 listing messages for `smp-SM228` returned those rows from `/api/cards/smp-SM228/slab-summary`.
 
+
+
+### Local Market Search Reliability
+
+Watchlist and Inventory card search require the PokeTCG/PokeAi market-data service.
+
+For local Vite + host-run Go development:
+
+```text
+POKETCG_BASE_URL=http://127.0.0.1:8765
+```
+
+`Pokemon/docker-compose.yml` must publish the PokeTCG service on the host:
+
+```text
+127.0.0.1:8765:8765
+```
+
+For Docker-run Go server, Compose overrides the URL to:
+
+```text
+http://poketcg:8765
+```
+
+If Watchlist or Inventory shows `market data search failed`, first check:
+
+```bash
+curl http://127.0.0.1:8765/health
+```
+
+Verified on 2026-06-01:
+
+- `pokemontool_poketcg` was restarted with host port `8765` published.
+- `GET /api/cards/tcg-search?q=radiant charizard&limit=5` returned real PokeTCG market rows.
+- Browser QA on `http://127.0.0.1:5173/watchlist` showed `Radiant Charizard` search results with `$24.81` and `$14.19`, no `market data search failed`, and selecting the `$24.81` result calculated a 15% below-market buy alert of `$21.09`.
+- Watchlist and Inventory frontend calculations now use TCGPlayer `market` first, then Cardmarket `cardmarketTrend` if TCGPlayer market is missing.
+
+### Watchlist Live Slab Lookup Reliability
+
+Watchlist `Slabs` cannot rely only on old `card_listings` rows. The UI now refreshes live eBay observations for the watched card before reading `/api/cards/{id}/slab-summary`.
+
+Important behavior as of 2026-06-01:
+
+- `GET /api/cards/ebay-listings` accepts `publish=true`; when set, api-consumer publishes matched live listings to RabbitMQ and the Go worker persists them into `card_listings`.
+- Watchlist `Slabs` calls live eBay lookups for supported slab tiers, then reloads the persisted summary.
+- PokeTCG search has a backend fallback for collector-style queries where the set and number are part of the search text, for example `lucario 12/16 pokemon rumble`. It now tries official PokemonTCG `name + number` candidates first, ranks by set tokens and printed set total denominator, then falls back to bounded broad name search. This protects cases like `charizard 4/102 base set` from incorrectly choosing Base Set 2.
+- eBay slab lookup uses Browse API first, then Scrapling public-search fallback when the strict API query returns zero raw rows or when Browse rows all filter out as wrong card/set/grade. This catches vault/public-search rows that Browse can miss and prevents irrelevant Browse rows from blocking the fallback.
+- eBay slab matching now requires set tokens when `setName` is available, so unrelated same-character slabs are not persisted under the watched card.
+- Supported summary/search tiers include PSA 10/9/8/7, CGC 10/9.5/9/8.5/8/7.5/7, and BGS 10/9.5/9/8.5/8/7.5/7.
+
+Verified locally on 2026-06-01 for `ru1-12 Lucario Pokemon Rumble #12`:
+
+- `lucario rumble`, `lucario 12/16 pokemon rumble`, and `lucario 12 pokemon rumble` all returned `ru1-12`.
+- Broader live matrix also passed: `charizard 4/102 base set -> base1-4`, `pikachu 58/102 base set -> base1-58`, `mewtwo 10/102 base set -> base1-10`, `umbreon 17/17 pop series 5 -> pop5-17`, `rayquaza 128/124 dragons exalted -> bw6-128`, `lugia 9/111 neo genesis -> neo1-9`, `gengar 5/62 fossil -> base3-5`, and `blastoise 2/102 base set -> base1-2`.
+- Live slab refresh found PSA 8 `$499.99`, PSA 9 `$580` and `$3,499.99`, and BGS 7.5 `$1,000`.
+- Live Azumarill proof after fallback-on-filter-empty fix: `azumarill 1/109 team rocket returns -> ex7-1`; `CGC_10` lookup returned `2004 POKEMON EX TEAM ROCKET RETURNS, REVERSE HOLO AZUMARILL CGC 10 GEM MINT` at `$999.99` and `Azumarill Holo 1/109 Team Rocket Returns - CGC 10` at `$1,572.90`; `/api/cards/ex7-1/slab-summary` persisted both under `CGC_10`.
+- Follow-up fix on 2026-06-02: summaries now include `BOTH` language observations when the watchlist is filtered to `ENGLISH` or `JAPANESE`, and Watchlist `Slabs` no longer keeps a stale empty in-memory cache. Verified `/api/cards/ex7-1/slab-summary?languagePreference=ENGLISH` returns the raw English rows and the CGC 10 rows saved as `BOTH`.
+- Follow-up hardening on 2026-06-02: Watchlist refresh now calls raw, generic any-slab, and fixed slab-tier lookups; passes `cardNumber` through frontend -> Go -> api-consumer; appends dynamic summary tiers returned by the backend instead of hiding tiers outside the fixed lane list; backend summary no longer filters out unlisted parsed slab tiers. Slab parser now recognizes lower grades down to 1 and `GSG`. Card-number matching rejects conflicting fractions like `025/084` for an English `1/109` card but accepts exact slab titles that omit the card number.
+- Important eBay limitation observed on 2026-06-02: eBay public HTML search and Playwright browser fetches returned 403/error pages from this environment for `Azumarill 1/109 Team Rocket Returns`, while a human browser can show more rows. eBay Browse API initially missed visible public rows when `English` was injected into the query. After removing language terms from the query and keeping language as a post-filter, live refresh returned raw rows, `PSA_8`, `CGC_9`, `CGC_10`, and `GRADED_UNKNOWN` for Azumarill. eBay Browse API still returned zero for the visible `PSA_3 James Theme Deck` row even with broader wording, so full parity with a human eBay session still requires a browser/session/proxy-backed collector or a user-authorized eBay/Terapeak data source.
+- `/api/cards/ru1-12/slab-summary?languagePreference=BOTH` returned only the relevant Rumble rows after removing bad rows from an earlier broad test.
+
+## Current PokemonTool -> Odoo Store State
+
+The Odoo storefront is now connected to real PokemonTool inventory instead of being only a static marketing page.
+
+Local URLs:
+
+```text
+Pokemon app: http://127.0.0.1:5173
+Pokemon API: http://127.0.0.1:3001
+Odoo store:  http://127.0.0.1:8069/pokecard-store
+Odoo login:  http://127.0.0.1:8069/web/login?db=pokecard_store
+```
+
+Current account sync behavior:
+
+- Successful Pokemon register/login calls the Odoo syncer.
+- The Odoo user login is the same email as Pokemon.
+- The Odoo password is updated from the successful Pokemon login password.
+- Verified locally on 2026-06-01 with the configured test account: Pokemon login succeeded, Odoo JSON auth succeeded, and Odoo web login redirected away from `/web/login`.
+
+Current inventory-to-store behavior:
+
+- `POST /api/inventory/{id}/store-listing` marks the Pokemon inventory row `READY` and calls Odoo JSON-RPC to create/update `product.template` using `pokemon_inventory_id` as the stable key.
+- On successful Odoo product sync, Pokemon now records `inventory.store_synced_at` so the backend can prove the row reached Odoo.
+- Odoo products are created with `sale_ok=true`, `is_published=true`, Pokemon metadata fields, image URL, and storefront price.
+- `/pokecard-store` now queries Odoo `product.template` rows where `pokemon_inventory_id` exists and renders live synced products directly on the storefront.
+
+Verified local product state on 2026-06-01:
+
+- Pokemon inventory row `b92ab149-b9d9-4be2-9091-ca63e31a611e` for `Blastoise - Platinum - #2 - NM` is `READY` with store price `$36.42` and a non-null `store_synced_at`.
+- Odoo product `Blastoise - Platinum - #2 - NM` exists, is published, has `pokemon_inventory_id=b92ab149-b9d9-4be2-9091-ca63e31a611e`, and list price `$36.42`.
+- Browser QA for `http://127.0.0.1:8069/pokecard-store` found the product visible, the price visible, the `Synced from PokemonTool` section visible, no console errors, no failed network responses, and the product detail link `/shop/product/6` returned HTTP 200.
+
+Important caveat:
+
+- Odoo only knows about Pokemon users after they successfully register/login through Pokemon after the Odoo syncer is configured. Existing Pokemon users should log into Pokemon once to push/update their Odoo account.
+- Odoo only shows inventory rows that were explicitly sent through Add to Store. It does not auto-publish every inventory item.
+
 ## Watchlist Behavior
 
 Schema:
@@ -197,13 +296,13 @@ Medium priority:
 - Add a data freshness signal so stale market data is clearly marked.
 - Keep Postgres, Redis, RabbitMQ, Grafana, Loki, and Prometheus private unless intentionally exposed.
 
-NexusOS / Shopify uncertainty:
+NexusOS / Shopify / Odoo commerce direction:
 
-- The root Shopify/NexusOS app is a separate business platform for Shopify merchant workflows: dashboard, orders, customers, AI decisions, approvals, workflows, fraud/SEO/cart recovery/marketing/inventory services.
-- It does not yet clearly monetize or operate the Pokemon product.
-- The likely connection is commercial: use Shopify as the storefront/operator layer for vendors, inventory, subscriptions, checkout, or card-selling workflows, while Pokemon is the market-intelligence product.
-- Do not force the two systems together until a specific business workflow is chosen.
-- The chosen Shopify direction is documented in `docs/SHOPIFY_POKEMON_STRATEGY.md`: PokemonTool is the market-intelligence engine, Shopify is the commerce/storefront engine.
+- The root Shopify/NexusOS app remains a separate business platform for Shopify merchant workflows.
+- Odoo is now the local free storefront/ERP path for the Pokemon seller workflow.
+- PokemonTool is the market-intelligence and inventory source of truth; Odoo is the commerce surface for products, storefront pages, customers, sales, inventory operations, and orders.
+- Do not treat `/pokecard-store` as static marketing. It must continue rendering real `pokemon_inventory_id` products from Odoo.
+- The chosen Shopify direction is documented in `docs/SHOPIFY_POKEMON_STRATEGY.md`: PokemonTool is the market-intelligence engine, Shopify/Odoo are commerce/storefront options.
 
 ## Business Direction Notes
 
@@ -254,3 +353,624 @@ Suggested skills:
 
 - `handoff` when preparing continuation notes.
 - `ui-ux-pro-max` when redesigning the watchlist/search flow.
+
+## Session Update - 2026-05-27
+
+Read this before restarting Pokemon infra or touching global Codex setup.
+
+What happened this session:
+
+- User asked to understand the Pokemon project with understand-anything. A fallback graph was generated because the full understand-anything flow needed plugin dependencies and agent workflow support.
+- Generated files in Pokemon:
+  - `Pokemon/.understand-anything/knowledge-graph.json`
+  - `Pokemon/.understand-anything/meta.json`
+  - `Pokemon/scripts/ua_fallback_graph_builder.js`
+- The Understand Anything dashboard was started on `127.0.0.1:5173` and then stopped. It is no longer running.
+- Docker infra issue was diagnosed:
+  - Initial failure was `127.0.0.1:5432` already in use when Docker tried to publish Postgres.
+  - Postgres data was not wiped; logs showed the existing database directory was reused.
+  - After ports were cleared, Postgres recreated cleanly and published `127.0.0.1:5432->5432`.
+- A scraper container startup bug was fixed in `Pokemon/services/scraping-service/Dockerfile`:
+  - The image contained `/app/main`, while the container command expected `./scraper`.
+  - Dockerfile was changed to build/copy/run `main` consistently.
+- After the fix, the Pokemon compose stack reached running state and `http://127.0.0.1:3001/health` returned `200`.
+- User then explicitly requested all containers be stopped. All running Docker containers were stopped and `docker ps` showed no running containers.
+- ECC was installed globally for Codex:
+  - Repo cloned to `/home/iscjmz/.codex/ECC`.
+  - Local Codex marketplace wrapper created at `/home/iscjmz/.codex/ecc-marketplace`.
+  - Plugin installed/enabled as `ecc@ecc` version `2.0.0-rc.1`.
+  - ECC AGENTS guidance merged into `/home/iscjmz/.codex/AGENTS.md` with markers.
+  - ECC Codex role files copied to `/home/iscjmz/.codex/agents`.
+  - ECC prompts generated under `/home/iscjmz/.codex/prompts`.
+  - ECC MCP config entries were merged additively into `/home/iscjmz/.codex/config.toml`.
+  - Backup was saved at `/home/iscjmz/.codex/backups/ecc-manual-20260527-1135`.
+  - ECC global Git hooks were intentionally not enabled because they would set global `core.hooksPath` for every repo.
+
+Current known dirty state after this session:
+
+```text
+Pokemon/services/scraping-service/Dockerfile  # modified; actual infra fix
+Pokemon/.understand-anything/                 # untracked generated graph
+Pokemon/scripts/ua_fallback_graph_builder.js  # untracked fallback graph builder
+```
+
+Important next-session instructions:
+
+1. Start by reading `/home/iscjmz/shopify/shopify/AGENTS.md` and this handoff file before taking action.
+2. Do not assume Pokemon containers are running; the user asked for all containers to be stopped.
+3. If restarting Pokemon infra, inspect `Pokemon/docker-compose.yml` first and check host ports `5432` and `5173` before `docker compose up -d`.
+4. Do not restart the Understand Anything dashboard unless the user asks for it; it competes with Pokemon client port `5173`.
+5. Treat `Pokemon/services/scraping-service/Dockerfile` as an intentional local fix unless the user asks to revert it.
+6. Decide with the user whether to keep or delete the generated `.understand-anything` graph files and fallback builder.
+
+
+## Session Update - 2026-05-30 Odoo Storefront Starter
+
+Read this before editing Odoo, Shopify, or Pokemon commerce boundaries.
+
+What changed:
+
+- Official Odoo Community source was shallow-cloned into `vendor/odoo` on branch `19.0`.
+- Parent repo ignores `/vendor/odoo/` so the 47k-file upstream source checkout is available locally but not accidentally committed.
+- Project-owned Odoo work now lives under `odoo/`, not inside Odoo core.
+- Added `docker-compose.odoo.yml` for a local Odoo 19 Community + Postgres stack.
+- Added `odoo/config/odoo.conf` with `/mnt/extra-addons` in `addons_path` so project custom addons load.
+- Added `odoo/.env.example` for local Odoo ports and development DB credentials.
+- Added `odoo/custom_addons/pokecard_storefront`, a starter Odoo addon for a Pokemon card seller storefront.
+- Added `odoo/scripts/validate_odoo_scaffold.sh` for cheap validation without starting services.
+- Added `odoo/README.md` with first-run, install, and production-hardening notes.
+
+Current intended Odoo shape:
+
+```text
+vendor/odoo                       # ignored upstream Odoo source reference
+odoo/config/odoo.conf             # tracked project Odoo config
+odoo/custom_addons/               # tracked custom Odoo modules
+odoo/custom_addons/pokecard_storefront
+odoo/scripts/validate_odoo_scaffold.sh
+docker-compose.odoo.yml           # local Odoo runtime stack
+```
+
+Local validation command:
+
+```bash
+bash odoo/scripts/validate_odoo_scaffold.sh
+```
+
+Local startup command:
+
+```bash
+cp odoo/.env.example odoo/.env
+docker compose -f docker-compose.odoo.yml --env-file odoo/.env up -d
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8069
+```
+
+Install addon in Odoo Apps:
+
+```text
+PokeCard Storefront
+```
+
+Storefront route after addon install:
+
+```text
+/pokecard-store
+```
+
+Important product boundary:
+
+- Odoo is now a free ERP/eCommerce storefront candidate for card seller operations.
+- Shopify remains a separate commerce/storefront direction already documented in `docs/SHOPIFY_POKEMON_STRATEGY.md`.
+- PokemonTool remains the market-intelligence engine.
+- Do not force Odoo, Shopify, and PokemonTool together until a concrete workflow is chosen.
+- The clean likely integration is: PokemonTool inventory/market intelligence -> Odoo products/pricing/inventory -> Odoo storefront/orders.
+
+What remains:
+
+- Run the Odoo stack and create the first local database.
+- Install `PokeCard Storefront` in Odoo Apps and verify `/pokecard-store` in a browser.
+- Add real Odoo product categories: Raw Singles, Graded Slabs, Sealed Product, Concierge Sourcing.
+- Design a sync path from PokemonTool inventory to Odoo products.
+- Add custom Odoo fields for card metadata: external card ID, set, number, grade, grader, cert number, market value, acquisition cost, and target margin.
+- Add production hardening before public exposure: HTTPS proxy, strong secrets, backups, restore test, email, payment provider, logs, and alerts.
+
+Verified runtime state - 2026-05-30:
+
+- Local Odoo Docker stack is running with containers `shopify-odoo` and `shopify-odoo-db`.
+- Database `pokecard_store` was initialized with `website_sale` and `pokecard_storefront`.
+- `odoo/config/odoo.conf` now pins `dbfilter = ^pokecard_store$` so localhost routes bind to the initialized database.
+- Verified `http://127.0.0.1:8069/pokecard-store` returns HTTP 200 and renders the custom PokeCard storefront content.
+- `bash odoo/scripts/validate_odoo_scaffold.sh` passes after the config change.
+
+## Session Update - 2026-05-30 Odoo Pokemon Inventory Bridge
+
+Read this before editing Pokemon inventory, Odoo products, or store/backend boundaries.
+
+Direction clarified by user:
+
+- The Pokemon card store should use Odoo as the sellable backend.
+- PokemonTool should not be a separate disconnected app for this workflow.
+- PokemonTool remains the card intelligence/inventory source, while Odoo owns products, stock, CRM, sales, customers, checkout, and orders.
+
+Implemented local slice:
+
+- Upgraded `odoo/custom_addons/pokecard_storefront` from storefront-only to storefront + Pokemon product metadata.
+- Added `odoo/custom_addons/pokecard_storefront/models/product_template.py` extending Odoo `product.template` with Pokemon fields.
+- Added backend product tab `views/product_template_views.xml` named `Pokemon Inventory`.
+- Added `odoo/custom_addons/pokecard_storefront/scripts/sync_pokemon_inventory_to_odoo.py` for one-way sync from PokemonTool Postgres inventory rows to Odoo products through XML-RPC.
+- Updated `odoo/README.md` with bridge runbook and dry-run command.
+- Updated plan at `docs/superpowers/plans/2026-05-30-odoo-pokemon-inventory-bridge.md`.
+
+Installed in the running `pokecard_store` Odoo database:
+
+- `crm`
+- `stock`
+- `sale_management`
+- `website_sale_stock`
+- `pokecard_storefront`
+
+Verified:
+
+- `python3 -m py_compile` passed for the manifest, model extension, and sync script.
+- `bash odoo/scripts/validate_odoo_scaffold.sh` passed.
+- Odoo module upgrade completed successfully and loaded 94 modules.
+- Database shows all five target modules installed.
+- `product_template` has 18 `pokemon_*` columns.
+- `http://127.0.0.1:8069/pokecard-store` still returns HTTP 200 after the upgrade.
+
+Important next step:
+
+- Run the sync script against a running PokemonTool Postgres database after creating/confirming Odoo admin credentials. Use `--dry-run` first. The current script creates/updates Odoo products, but deeper stock quantity synchronization via `stock.quant` should be added as a separate safe step after product upsert is verified.
+
+## Session Update - 2026-05-30 Wholesale Slab AI Direction
+
+User clarified the next product wedge:
+
+- PokemonTool should help find graded slabs at wholesale/underpriced prices.
+- The system should identify bigger slab flips, estimate resale value, score risk/confidence/liquidity, and then connect approved opportunities to Odoo inventory/products.
+
+Current state:
+
+- Not fully implemented yet.
+- Existing foundation already includes slab parsing, slab watchlists, slab listing snapshots, slab summary endpoint, and basic deal-of-day infrastructure.
+- Odoo is already prepared to receive Pokemon card products and metadata through `pokecard_storefront` fields and the XML-RPC sync bridge.
+
+Plan created:
+
+- `docs/superpowers/plans/2026-05-30-wholesale-slab-ai.md`
+
+Planned architecture:
+
+```text
+marketplace active listings + sold comps
+  -> slab parser
+  -> sold-comp valuation engine
+  -> wholesale opportunity scorer
+  -> human approval queue
+  -> PokemonTool inventory row
+  -> Odoo product/inventory sync
+  -> Odoo storefront/orders/CRM
+```
+
+Important product/security decisions:
+
+- Do not auto-buy.
+- Do not let an LLM be the price source of truth.
+- Use sold comps and deterministic valuation first.
+- Use AI/LLM only for messy title interpretation, confidence explanation, and evidence summarization.
+- Require human approval before pushing candidates into sellable Odoo inventory.
+
+## Session Update - 2026-05-30 Wholesale Slab AI Implementation
+
+Implemented the first full vertical slice of the wholesale slab sourcing feature.
+
+Pokemon database:
+
+- Added `Pokemon/database/migrations/011_slab_wholesale_opportunities.sql`.
+- Adds `slab_comps` for sold-comparable slab sales.
+- Adds `slab_opportunities` for ranked active buy candidates.
+- Adds nullable slab metadata to `inventory`: `asset_type`, `grader`, `grade`, `slab_tier`, `cert_number`, `target_sale_price`.
+- Applied the migration to local Pokemon Postgres and verified tables/indexes exist.
+
+Analytics engine:
+
+- Added `slab_valuation.py` for median sold-comp valuation with outlier filtering.
+- Added `slab_opportunity_scorer.py` for all-in cost, expected profit, margin, liquidity/confidence/risk, and deal score.
+- Added `analyzers/slab_opportunity_finder.py` to score recent active slab listings and upsert opportunities.
+- Extended `repositories/listing_repo.py` with slab listing, sold comp, and opportunity persistence methods.
+- Wired the finder into `services/analytics-engine/main.py` on `SLAB_OPPORTUNITY_INTERVAL_HOURS`.
+- Added unittest regression coverage under `services/analytics-engine/tests/`.
+
+Go API:
+
+- Added `SlabOpportunity` model, store, service, and handler.
+- Added protected endpoints:
+  - `GET /api/slab-opportunities`
+  - `POST /api/slab-opportunities/{id}/approve`
+  - `POST /api/slab-opportunities/{id}/reject`
+- Approval creates a PokemonTool inventory row for the authenticated user with slab metadata and acquisition/market values.
+- Rejection marks the opportunity rejected.
+
+React UI:
+
+- Added `client/src/pages/SlabOpportunitiesPage.jsx`.
+- Added `/slab-opportunities` route and `Slab Finder` navigation item.
+- UI shows score, profit, margin, confidence, risk, evidence reason, filters, listing link, approve, and reject.
+
+Odoo bridge:
+
+- Extended `odoo/custom_addons/pokecard_storefront/scripts/sync_pokemon_inventory_to_odoo.py` to read slab metadata from Pokemon inventory and map it into Odoo Pokemon product fields.
+
+Verification:
+
+- `python3 -m unittest discover -s Pokemon/services/analytics-engine/tests -p 'test_*.py'` passed.
+- `python3 -m py_compile` passed for new analytics and Odoo sync files.
+- `go test ./...` passed in `Pokemon/server`.
+- `npm install` was run in `Pokemon/client` because `vite` was missing locally.
+- `npm run build` passed in `Pokemon/client`.
+- `npm audit --audit-level=moderate` reports 2 moderate Vite/esbuild dev-server vulnerabilities; fix requires a breaking Vite major upgrade and was not forced in this session.
+
+Operational notes:
+
+- Odoo containers are still running.
+- Pokemon Postgres was started to apply/verify the migration.
+- Full production behavior still needs real sold-comp ingestion data. The scoring engine is implemented, but it can only produce good opportunities when `slab_comps` and active `card_listings` are populated.
+
+## Session Update - 2026-05-31 Product/Infra/Money Model Doc
+
+Created `docs/PRODUCT_INFRA_MONEY_MODEL.md` as the single high-level orientation file for:
+
+- what PokemonTool is
+- who it serves
+- how PokemonTool, Odoo, and Shopify/NexusOS fit together
+- how the product can make money
+- where Scrapling fits in the data-ingestion pipeline
+- what is built now vs what is still missing
+
+Future agents should read it after this handoff before making architecture or product-direction changes.
+
+## Session Update - 2026-05-31 Scrapling Integration
+
+Integrated Scrapling into the Pokemon ingestion layer.
+
+Verified source details before integration:
+
+- Repo: `D4Vinci/Scrapling`
+- PyPI package: `scrapling`
+- License: BSD-3-Clause
+- Installed version: `0.4.7`
+
+Implemented:
+
+- Added `scrapling[fetchers]==0.4.7` and `psycopg2-binary==2.9.9` to `Pokemon/services/api-consumer/requirements.txt`.
+- Installed dependencies into `Pokemon/services/api-consumer/venv`.
+- Added `Pokemon/services/api-consumer/services/scrapling_sold_comps.py`.
+- Added `Pokemon/services/api-consumer/repositories/slab_comp_repo.py`.
+- Added `Pokemon/services/api-consumer/scrapling_sold_comps_ingest.py`.
+- Added `docs/SCRAPLING_INTEGRATION.md`.
+- Updated `docs/PRODUCT_INFRA_MONEY_MODEL.md` with Scrapling integration status.
+
+Verification:
+
+- `import scrapling` reports `0.4.7` in the api-consumer venv.
+- Python compile check passed for the new Scrapling modules and CLI.
+- CLI help works.
+- Harmless dry-run against `https://quotes.toscrape.com/` fetched HTTP 200 and parsed one test row without writing to Postgres.
+
+Important guardrail:
+
+- Scrapling is a scraping tool, not permission to scrape every site. Use official APIs where available, respect terms/robots/rate limits, and use dry-run before inserting comps.
+
+## Session Update - 2026-05-31 Sold-Comp Batch Loop And Trend-Aware Slab Ranking
+
+Implemented the next bridge toward real-time slab buy/sell alerts.
+
+What changed:
+
+- Added `Pokemon/services/api-consumer/services/scrapling_sold_comps_batch.py` for JSON-configured, approved sold-comp source batches.
+- Added `Pokemon/services/api-consumer/scrapling_sold_comps_batch.py` CLI.
+- Added `Pokemon/services/api-consumer/config/sold_comps.sources.example.json` as a disabled source template.
+- Added `SOLD_COMP_SOURCES_CONFIG`, `SOLD_COMP_INTERVAL_MINUTES`, and `SOLD_COMP_DRY_RUN` support to the api-consumer background service.
+- Added minute-level slab scoring with `SLAB_OPPORTUNITY_INTERVAL_MINUTES` while preserving the old `SLAB_OPPORTUNITY_INTERVAL_HOURS` fallback.
+- Extended slab valuation with trend scoring from recent sold comps versus older comps.
+- Added regression tests for the sold-comp batch runner and trend-aware valuation.
+
+Important state:
+
+- The local database had active slab listing snapshots, but no real `slab_comps`, so real candidate alerts still require approved sold-comp source configs.
+- The pipeline now exists for real source data: source config -> Scrapling batch -> `slab_comps` -> analytics scorer -> `slab_opportunities` -> Slab Finder UI.
+- Do not enable broad scraping without verifying source terms, selectors, and dry-run output.
+
+## Session Update - 2026-05-31 Live Slab Research Connector
+
+Implemented a real live slab source connector after verifying the project eBay credentials live in `Pokemon/.env`.
+
+Added:
+
+- `Pokemon/services/api-consumer/services/pricecharting_market.py` for PriceCharting big movers and grade-price parsing via Scrapling.
+- `Pokemon/services/api-consumer/services/live_slab_research.py` for strict PriceCharting + eBay active-ask research.
+- `Pokemon/services/api-consumer/live_slab_research.py` CLI.
+- `Pokemon/services/api-consumer/config/live_slab_targets.example.json` with an Armored Mewtwo SM228 PSA 10 curated target.
+- Tests for PriceCharting parsing, eBay numeric price parsing, curated target loading, buy/sell signal classification, and rejecting wrong-variant Charizard false positives.
+
+Live verification:
+
+- `PYTHONPATH=. python3 live_slab_research.py --mover-limit 8 --target-config config/live_slab_targets.example.json` ran against live PriceCharting + eBay and returned zero production buy candidates.
+- Relaxed thresholds returned three exact Armored Mewtwo SM228 PSA 10 active eBay listings, all as `SELL_RESEARCH` because asking prices were above the PriceCharting PSA 10 reference.
+
+Important product note:
+
+- This is now real internet research, not mock data.
+- It intentionally refuses false buy alerts when identity or economics do not clear strict filters.
+- Next integration step is persisting live research output into `slab_opportunities` or a dedicated research signal table and exposing it in the Slab Finder UI.
+
+## Session Update - 2026-05-31 Inventory Add-to-Store Gate
+
+Read this before editing Pokemon inventory, Odoo sync, or slab flipping workflows.
+
+Implemented the missing user-controlled commerce action between PokemonTool inventory and Odoo products:
+
+- Added `Pokemon/database/migrations/012_inventory_store_listing_status.sql`.
+- Inventory rows now support `store_listing_status`, `store_price`, `store_listing_notes`, `store_listed_at`, and `store_synced_at`.
+- Added protected endpoint `POST /api/inventory/{id}/store-listing`. It marks a user-owned inventory row `READY` for store sync with an explicit store price.
+- Updated `Pokemon/client/src/pages/InventoryPage.jsx` with an Add to Store action and store status/price display.
+- Updated `odoo/custom_addons/pokecard_storefront/scripts/sync_pokemon_inventory_to_odoo.py` so normal sync only reads inventory rows marked `READY`. Use `--include-all-inventory` only for old broad sync behavior. Successful non-dry-run sync marks rows `SYNCED`.
+
+Verified locally:
+
+- `go test ./services` passed after a RED test proved the method/model did not exist.
+- `go test ./...` passed in `Pokemon/server`.
+- `npm run build` passed in `Pokemon/client`.
+- Applied migration 012 to local Pokemon Postgres.
+- Created a temporary user and slab inventory row through the real API, then called `POST /api/inventory/{id}/store-listing`; response returned `storeListingStatus: READY` and `storePrice: 10800`.
+- Ran Odoo bridge dry-run with `POKEMON_POSTGRES_DSN=...`; it selected exactly the `READY` row and built an Odoo `product.template` payload. Temporary user was deleted afterward.
+
+Product boundary is now clearer:
+
+```text
+Live slab research -> slab_opportunities
+Seller approves/owns item -> inventory
+Seller presses Add to Store -> inventory.store_listing_status = READY
+Odoo sync script -> creates/updates Odoo product -> marks inventory SYNCED
+```
+
+This is helpful because the scanner can be aggressive about finding/valuing slabs, while store publishing stays under explicit seller control.
+
+## Session Update - 2026-06-02 Watchlist Slab Summary No-Truncation Fix
+
+Fixed a generic Watchlist slab display issue that made real eBay observations look missing even after scans found them.
+
+What changed:
+
+- `Pokemon/server/store/card_store.go` no longer limits slab summary rows to `rn <= 5` per lane. The summary now returns every listing stored for the card/tier/language window, ordered by lane and lowest active price.
+- Dynamic lower grades are labeled generically (`PSA_3` -> `PSA 3`, `CGC_6` -> `CGC 6`, `BGS_2` -> `BGS 2`) instead of falling back to raw tier codes.
+- `Pokemon/client/src/pages/WatchlistPage.jsx` now includes full PSA/CGC/BGS 1-10 slab options, so Watchlist live refresh deliberately scans lower grades like PSA 3 instead of only PSA/CGC/BGS 7-10.
+- The Watchlist table header changed from `Top Matches` to `Matches` because the backend is no longer intentionally returning a five-row preview.
+- Added `Pokemon/server/store/card_store_test.go` to lock down lower-grade slab labels.
+
+Verified locally:
+
+- `go test ./...` passed in `Pokemon/server`.
+- `venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v` passed in `Pokemon/services/api-consumer`.
+- `npm run build` passed in `Pokemon/client`.
+- Restarted the local Go API on port `3001`.
+- Authenticated local check of `/api/cards/ex7-1/slab-summary?languagePreference=ENGLISH` returned all six RAW rows instead of the previous five-row cap, plus PSA 8, CGC 9, CGC 10, and GRADED_UNKNOWN rows for Azumarill.
+
+Known limitation:
+
+- eBay public browser search can show rows that the eBay Browse API and unauthenticated Scrapling/browser automation do not return. The app now shows all rows it can retrieve and persist, but full parity with a human eBay page still needs an authenticated/session-backed source, proxy-backed collector, Terapeak/export ingestion, or a manual paste/import workflow.
+
+## Session Update - 2026-06-02 eBay Copied-Text Import Fallback
+
+Implemented a generic fallback for eBay rows that are visible in the user's browser but not returned by the eBay Browse API or unauthenticated Scrapling/browser automation.
+
+What changed:
+
+- Added `EbayService.import_listing_text(...)` in `Pokemon/services/api-consumer/services/ebay_service.py`.
+- Added copied eBay search text parsing with deterministic `manual:<hash>` listing IDs, generated eBay search URLs, and the existing strict card filters.
+- Added `POST /ebay/import-text` in the API-consumer.
+- Added protected Go proxy `POST /api/cards/ebay-import-text` in `Pokemon/server`.
+- Added a Watchlist expanded-panel paste box and `Import eBay Text` action in `Pokemon/client/src/pages/WatchlistPage.jsx`.
+- Expanded scheduled `ALL_SLABS` scanning in `Pokemon/services/api-consumer/main.py` to PSA/CGC/BGS 1-10 instead of only high grades.
+- Adjusted set matching to treat `EX` as a generic Pokemon set prefix, so `EX Team Rocket Returns` watch targets match eBay titles that say only `Team Rocket Returns`.
+- Adjusted the blocklist so `deck` terms can pass only when slab parsing confirms the row is actually a graded slab. This allows rows like `James Theme Deck PSA 3` without opening raw deck false positives.
+
+Verified locally:
+
+- `go test ./...` passed in `Pokemon/server`.
+- `venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v` passed in `Pokemon/services/api-consumer` with 28 tests.
+- `npm run build` passed in `Pokemon/client`.
+- Restarted API-consumer on `8001` and Go API on `3001`.
+- Protected live import call for Azumarill copied text returned two imported slabs: PSA 8 at `$74.01` and PSA 3 at `$35`.
+- Protected slab summary for `ex7-1` then included the imported `PSA_3` lane with listing id `manual:e6d70b828cdf7e6345dc2704`.
+
+How to use:
+
+1. Open Watchlist.
+2. Click `Slabs` on the exact card.
+3. Copy visible eBay search result text from the browser.
+4. Paste into the new import box and click `Import eBay Text`.
+5. The app filters by card name, set, card number, language, and slab parser before saving rows.
+
+Important limitation:
+
+- This is a fallback for browser-visible rows; it does not replace real API/Scrapling scans. If a source blocks automation but the user can see rows manually, paste/import brings those rows into the same `card_listings` pipeline without weakening global filters.
+
+## Session Update - 2026-06-02 Generic eBay Slab Query Fix For Sparse Slabs
+
+Fixed the generic missing-slab issue reproduced with Spinda 26/92 EX Legend Maker.
+
+Root cause:
+
+- The frontend already sent `cardNumber`, but `EbayService.scan_card` did not include card number query variants in eBay slab searches.
+- `EbayRepo.search_listings` always appended `pokemon card` to every query. This helped raw searches but broke some sparse exact slab searches. Example: eBay Browse API found `Spinda 26/92 EX Legend Maker CGC 9`, but the repo-mutated query could return zero.
+- This caused the Watchlist slab table to show many RAW rows but zero slab rows even when eBay human search showed slabs in the title/image.
+
+What changed:
+
+- Added `_search_queries(...)` in `Pokemon/services/api-consumer/services/ebay_service.py`.
+- Slab searches now try multiple generic query variants when a card number exists: base set + grade, `card number + set + grade`, `#number + set + grade`, and grade-first variants.
+- Raw searches keep the cheaper existing path.
+- Added `_marketplace_query(...)` in `Pokemon/services/api-consumer/repositories/ebay_repo.py` so rich slab/card-number queries are not mutated with an extra `pokemon card` suffix.
+- Added regression tests proving number-specific fallback queries find sparse slab rows and rich slab queries are not mutated.
+
+Verified locally:
+
+- Direct fixed service scan for Spinda `ex12-26` found live eBay slabs:
+  - `CGC_9` at `$15.99`: `Spinda Pokemon 2006 EX Legend Maker 26/92 Rare - CGC 9 MINT`
+  - `CGC_10` at `$679.99`: `CGC 10 Gem Mint Spinda EX Legend Maker 26/92 Reverse Holo Stamp Pokemon Low Pop`
+  - `PSA_7` at `$125`: `2006 POKEMON EX LEGEND MAKER #26 SPINDA-REVERSE FOIL PSA 7`
+- Restarted API-consumer on `8001`.
+- Published those three Spinda slab rows through the fixed live endpoint.
+- Protected Go slab summary for `/api/cards/ex12-26/slab-summary?languagePreference=ENGLISH` now returns RAW rows plus `PSA_7`, `CGC_10`, and `CGC_9` lanes.
+- `venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v` passed with 30 tests.
+- `go test ./...` passed in `Pokemon/server`.
+- `npm run build` passed in `Pokemon/client`.
+
+## Session Update - 2026-06-02 Authenticated eBay Seller Hub Research Connector
+
+Implemented the first authenticated Seller Hub Product Research connector. This is the bridge for combining Scrapling/Playwright-style browser automation with eBay Research metrics such as active/sold counts, listing averages, bids, watchers, shipping, and promoted listing share.
+
+What changed:
+
+- Added migration `Pokemon/database/migrations/014_seller_hub_research_metrics.sql` and applied it locally.
+- Added `seller_hub_research_metrics` table for per-card/per-grade/per-tab Product Research snapshots.
+- Added `Pokemon/services/api-consumer/services/seller_hub_research.py`:
+  - Builds grade-specific Seller Hub keywords, for example `Gengar & Mimikyu GX 165 Team Up PSA 10`.
+  - Builds `/sh/research` URLs for `ACTIVE` and `SOLD` tabs.
+  - Parses Seller Hub text for average listing price, price range, average shipping, free shipping %, total listings, promoted %, bids, watchers, top rows, and slab tiers.
+  - Supports a persistent local Playwright profile at `Pokemon/.local/ebay-seller-hub-profile` by default.
+- Added `Pokemon/services/api-consumer/repositories/seller_hub_research_repo.py` for upserting metrics.
+- Added `Pokemon/services/api-consumer/seller_hub_research.py` CLI:
+  - `venv/bin/python seller_hub_research.py login`
+  - `venv/bin/python seller_hub_research.py run --card-name ... --set-name ... --card-number ... --slab-tier PSA_10 --persist`
+- Added API-consumer endpoints:
+  - `POST /seller-hub/login`
+  - `POST /seller-hub/research/run`
+- Added opt-in background loop controlled by `EBAY_SELLER_HUB_RESEARCH_ENABLED=true`. When enabled, it reads Go watchlist targets and researches configured grade tiers/tabs on an interval.
+- Added `playwright==1.54.0` to api-consumer requirements and ignored `Pokemon/.local/` in git.
+
+Important operating model:
+
+- Do not paste eBay passwords or cookies into chat/docs/code.
+- First run the login command locally and log into eBay in the opened browser. The browser profile stays local under `.local/` and is ignored by git.
+- After login, run one-off research or enable the loop with env vars.
+- Default loop is disabled so normal scans do not fail if Seller Hub login is not set up.
+
+Useful env vars:
+
+- `EBAY_SELLER_HUB_PROFILE_DIR` defaults to `Pokemon/.local/ebay-seller-hub-profile`.
+- `EBAY_SELLER_HUB_RESEARCH_ENABLED=false` by default.
+- `EBAY_SELLER_HUB_RESEARCH_INTERVAL_MINUTES=240`.
+- `EBAY_SELLER_HUB_GRADE_LIMIT=6` for a conservative first pass.
+- `EBAY_SELLER_HUB_DAY_RANGE=30`.
+- `EBAY_SELLER_HUB_TABS=ACTIVE,SOLD`.
+- `EBAY_SELLER_HUB_BROWSER_CHANNEL=chrome` uses a system Chrome install when available.
+- `EBAY_SELLER_HUB_BROWSER_EXECUTABLE=/path/to/browser` can point at a trusted local browser binary.
+
+Login caveat:
+
+- If eBay/Google shows `This browser or app may not be secure`, do not use Google/social sign-in inside the automated browser. Use direct eBay email/username login, or install system Chrome and run with `EBAY_SELLER_HUB_BROWSER_CHANNEL=chrome`.
+
+Verified locally:
+
+- `venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v` passed with 33 tests.
+- `go test ./...` passed in `Pokemon/server`.
+- `npm run build` passed in `Pokemon/client`.
+- Seller Hub metrics migration applied successfully.
+- Synthetic Seller Hub metric upsert succeeded and was removed afterward.
+- API-consumer restarted on `8001`; logs show Seller Hub loop installed and disabled until env flag is enabled.
+
+Remaining work:
+
+- User must complete one local eBay Seller Hub login in the persistent browser profile.
+- After that, run one one-off Seller Hub research command against a known card and inspect the saved metrics.
+- Then wire the saved metrics into Slab Finder scoring/UI so opportunities use Seller Hub active/sold/watchers/bids instead of only Browse API active asks and PriceCharting references.
+
+## Session Update - 2026-06-03 Seller Hub Metrics In Finder + Headroom Codex Setup
+
+Authenticated eBay Seller Hub Product Research is now proven and connected to Finder output.
+
+What changed:
+
+- Installed user-local Chrome-for-Testing at `/home/iscjmz/.cache/chrome-for-testing/chrome/linux-149.0.7827.54/chrome-linux64/chrome` because eBay rejected Playwright's bundled Chromium during login/verification.
+- Added ignored local api-consumer `.env` setting `EBAY_SELLER_HUB_BROWSER_EXECUTABLE=.../chrome` so the Seller Hub CLI uses the local Chrome binary without storing credentials.
+- Updated `Pokemon/services/api-consumer/seller_hub_research.py` to load `.env` and use configurable browser executable/channel options.
+- Hardened Seller Hub auth detection so eBay verification/checkpoint pages (`Please verify yourself`, blocked browser warnings, access denied pages) fail loudly instead of being parsed as zero listings.
+- Added migration `Pokemon/database/migrations/015_seller_hub_metric_helpers.sql` with reusable helpers:
+  - `latest_seller_hub_metric(...)`
+  - `seller_hub_snapshot(...)`
+- Updated `Pokemon/server/store/slab_opportunity_store.go` so `GET /api/slab-opportunities` includes latest Seller Hub `ACTIVE` and `SOLD` snapshots as `sellerHubMetrics`.
+- Updated `Pokemon/client/src/pages/SlabOpportunitiesPage.jsx` so Finder cards display eBay Research active/sold metrics when available: listing count, average listing price, watchers, bids, research date, and source link.
+
+Live proof:
+
+- Seller Hub Product Research for `Pikachu PSA 10` returned real active-listing metrics from the authenticated browser profile, including total listings, average listing price, shipping, promoted share, watchers, bids, and parsed top rows.
+- Persisted real Seller Hub Product Research rows for current watchlist card `Spinda ex12-26`:
+  - `PSA_7`: 1 active listing, avg `$125.00`, 3 watchers.
+  - `CGC_9`: 1 active listing, avg `$15.99`, 9 watchers.
+  - `CGC_10`: 1 active listing, avg `$679.99`, 13 watchers.
+- Persisted a Seller Hub Product Research row for existing Finder card `Charizard [1st Edition] #4 PSA_10`; protected `GET /api/slab-opportunities?q=Charizard&limit=5` returned 5 opportunities with `sellerHubMetrics.active` attached. Sample metric: 191 active listings, `$47,506.63` average listing price, 96.7 average watchers, 3,320 max watchers.
+
+Verified:
+
+- `go test ./...` passed in `Pokemon/server`.
+- `npm run build` passed in `Pokemon/client`.
+- API-consumer health returned `{"status":"ok","service":"api-consumer","rabbitmq":"connected"}`.
+- Host-run Go API restarted on `3001` with host-local Postgres, Redis, RabbitMQ, PokeTCG, and api-consumer URLs.
+
+Important caveat:
+
+- Seller Hub broad keyword searches can include mixed rows if keywords are broad, for example other Charizard/1st-edition items. The connector now gets the real data, but the next scoring improvement should make Seller Hub keywords stricter using exact set/card number and row-level identity filtering before using the metrics for BUY/SELL ranking.
+
+Headroom/Codex setup:
+
+- Installed `headroom-ai` in user-level venv `/home/iscjmz/.local/share/headroom-venv`.
+- Symlinked CLI at `/home/iscjmz/.local/bin/headroom`; version `0.22.4`.
+- Ran `headroom init --global --memory codex`; `codex mcp list` now shows `headroom` enabled.
+- Headroom can reduce future Codex token usage only after Codex is restarted or launched through the Headroom integration. It cannot retroactively lower the current weekly usage already spent in this running session.
+
+## Session Update - 2026-06-03 Seller Hub Strict Identity Filtering + Finder Score
+
+Improved Seller Hub Product Research so broad eBay Research pages do not poison Finder metrics.
+
+What changed:
+
+- `Pokemon/services/api-consumer/services/seller_hub_research.py` now filters parsed Seller Hub rows by strict identity before computing metrics.
+- Seller Hub metrics are now derived from matched rows first, not page-level averages, when row prices exist.
+- The parser enforces:
+  - meaningful card-name tokens,
+  - set-name tokens when available,
+  - exact card number or compatible fraction matching,
+  - slab tier matching.
+- If `card_number` is not passed separately, the parser infers it from card names like `Charizard [1st Edition] #4`.
+- `build_keywords(...)` no longer duplicates a card number that already appears in the card name.
+- Added Seller Hub regression tests for conflicting fractions and inferred card numbers.
+- `Pokemon/server/store/slab_opportunity_store.go` now adjusts Finder response scores using Seller Hub metrics:
+  - active/sold metrics can raise `liquidityScore`, `confidenceScore`, and `dealScore`,
+  - active/sold metrics reduce `riskScore` when present.
+
+Live proof:
+
+- Exact authenticated Seller Hub research for `Charizard [1st Edition] #4`, set `Base`, card number `4`, tier `PSA_10` persisted 4 strict rows instead of the earlier broad 21-row mixed result.
+- The strict row set produced: 4 active listings, `$1,342,500.00` average listing price, 1,052 average watchers, and 3,319 max watchers.
+- Protected Finder API returned the strict Seller Hub metrics and adjusted scores: liquidity `72`, confidence `82`, risk `3`, deal score `300`.
+
+Verified:
+
+- `venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v` passed with 36 api-consumer tests.
+- `go test ./...` passed in `Pokemon/server`.
+- `npm run build` passed in `Pokemon/client`.
+- Go API health passed.
+- api-consumer health passed and RabbitMQ connected.
+
+Operational note:
+
+- Seller Hub browser research is working with authenticated Product Research.
+- Regular eBay Browse API is currently reaching production `https://api.ebay.com/...` but returns OAuth `401 Unauthorized` with the credentials available to the local api-consumer process. Fixing that requires valid production eBay Browse API client credentials or reverting to a valid sandbox app for sandbox-only tests. Do not commit credentials.
+

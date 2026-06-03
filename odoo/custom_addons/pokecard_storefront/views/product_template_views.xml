@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="product_template_form_pokemon_inventory" model="ir.ui.view">
+    <field name="name">product.template.form.pokemon.inventory</field>
+    <field name="model">product.template</field>
+    <field name="inherit_id" ref="product.product_template_only_form_view"/>
+    <field name="arch" type="xml">
+      <xpath expr="//page[@name='general_information']" position="after">
+        <page name="pokemon_inventory" string="Pokemon Inventory">
+          <group>
+            <group string="Card Identity">
+              <field name="pokemon_inventory_id" readonly="1"/>
+              <field name="pokemon_external_card_id"/>
+              <field name="pokemon_set_name"/>
+              <field name="pokemon_card_number"/>
+              <field name="pokemon_rarity"/>
+              <field name="pokemon_image_url"/>
+            </group>
+            <group string="Condition And Lane">
+              <field name="pokemon_asset_type"/>
+              <field name="pokemon_condition"/>
+              <field name="pokemon_grader"/>
+              <field name="pokemon_grade"/>
+              <field name="pokemon_cert_number"/>
+            </group>
+          </group>
+          <group>
+            <group string="Market And Margin">
+              <field name="pokemon_acquisition_cost"/>
+              <field name="pokemon_market_value"/>
+              <field name="pokemon_target_margin_pct"/>
+              <field name="pokemon_price_source"/>
+              <field name="pokemon_market_updated_at"/>
+            </group>
+            <group string="Sync State">
+              <field name="pokemon_sync_source"/>
+              <field name="pokemon_last_synced_at" readonly="1"/>
+            </group>
+          </group>
+        </page>
+      </xpath>
+    </field>
+  </record>
+</odoo>
