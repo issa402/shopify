@@ -974,3 +974,20 @@ Operational note:
 - Seller Hub browser research is working with authenticated Product Research.
 - Regular eBay Browse API is currently reaching production `https://api.ebay.com/...` but returns OAuth `401 Unauthorized` with the credentials available to the local api-consumer process. Fixing that requires valid production eBay Browse API client credentials or reverting to a valid sandbox app for sandbox-only tests. Do not commit credentials.
 
+## Session Update - 2026-06-03 eBay Browse 401 Fallback Hardening
+
+- Fixed a slab scanning reliability bug in `Pokemon/services/api-consumer/services/ebay_service.py`: when eBay Browse API auth/network fails, slab scans now still call the public eBay/Scrapling active-listing fallback instead of returning zero listings.
+- Added regression coverage in `Pokemon/services/api-consumer/tests/test_ebay_service_matching.py` for a Browse API `401 Unauthorized` path returning a real slab from the fallback scraper.
+- Fixed local env resolution in `Pokemon/services/api-consumer/repositories/ebay_repo.py`: service-local commands now load both `services/api-consumer/.env` and the parent `Pokemon/.env` with `override=False`, so app-level `EBAY_SANDBOX_MODE=false` applies when no service-local override exists.
+- Live proof after the fix: a production-mode `Spinda` / `EX Legend Maker` / `#26` / `PSA_7` scan returned `2006 POKEMON EX LEGEND MAKER #26 SPINDA-REVERSE FOIL PSA 7` at `$125.00`.
+- Current meaning of the eBay caveat: invalid/revoked Browse API credentials can still prevent official Browse API calls, but slab scans no longer go blank because the free public eBay fallback remains active. Seller Hub Product Research remains the richer source for watchers/bids/active-sold metrics.
+- Headroom status: `codex mcp list` shows `headroom` enabled, and `headroom memory stats` works. It has zero current memories because this Codex session is not running through `headroom wrap codex`; restart/wrap Codex for future token savings.
+- Root workspace verification note: root `package.json` declares `pnpm@10` and Node `>=20`, but this shell currently has Node `18.20.8` and no `pnpm`, so root `pnpm` verification is environment-blocked until Node/pnpm are installed or enabled.
+
+Verification run:
+
+```text
+cd Pokemon/services/api-consumer && venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v  # 37 tests passed
+cd Pokemon/server && go test ./...                                                               # passed
+cd Pokemon/client && npm run build                                                               # passed
+```
