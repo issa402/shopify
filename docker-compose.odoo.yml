@@ -40,6 +40,13 @@ services:
       - ./odoo/config/odoo.conf:/etc/odoo/odoo.conf:ro
       - ./odoo/custom_addons:/mnt/extra-addons:ro
     command: ["odoo", "--config", "/etc/odoo/odoo.conf"]
+    networks:
+      - default
+      - odoo-bridge
+
+networks:
+  odoo-bridge:
+    name: pokemon-odoo-bridge
 
 volumes:
   odoo_db_data:

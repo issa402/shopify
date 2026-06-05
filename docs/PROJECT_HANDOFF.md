@@ -991,3 +991,15 @@ cd Pokemon/services/api-consumer && venv/bin/python -m unittest discover -s test
 cd Pokemon/server && go test ./...                                                               # passed
 cd Pokemon/client && npm run build                                                               # passed
 ```
+
+## 2026-06-05 Agent Ops And Commerce Direction Update
+
+- Added `docs/PROJECT_INFRASTRUCTURE.md` as the current infrastructure map for PokemonTool, Odoo, Seller Hub automation, vendor insight scoring, alerts, and run commands.
+- Added `docs/AGENT_OPS_HERMES_LAST30DAYS.md` to document how Hermes Agent and `last30days` should be used for this project.
+- Installed `last30days` globally for this user at `~/.agents/skills/last30days` and added `Pokemon/scripts/run_last30days_vendor_pulse.sh` as the project wrapper.
+- The `last30days` wrapper is an intelligence/reporting input only. It saves market-pulse reports under `Pokemon/reports/last30days/` and should feed suggested watchlist additions, demand/risk explanations, listing copy, and vendor product strategy. It must not override eBay sold evidence, Seller Hub metrics, exact card/slab matching, or margin math.
+- Current no-key `last30days` sources are Reddit, Hacker News, and Polymarket. YouTube requires `yt-dlp`; GitHub requires `gh` auth or `GITHUB_TOKEN`; broader web/social sources require optional API keys such as `BRAVE_API_KEY`, `EXA_API_KEY`, `SCRAPECREATORS_API_KEY`, or `XAI_API_KEY`.
+- Hermes Agent is recommended as a future ops copilot for scheduled reports, Telegram/Slack access, market-pulse automation, and incident triage. It should not be installed into the production request path or granted broad write access to eBay, Odoo, Shopify, or production data without scoped approvals.
+- Odoo currently receives PokemonTool output through the product/inventory sync path. Odoo shows synced products and Pokemon metadata, but it does not yet expose a native live Go-backend intelligence dashboard. A future Odoo product tab could show Finder action, Seller Hub snapshot age, sold evidence, watcher/bid metrics, margin, and a link back to PokemonTool.
+- The Pokemon engine can be generalized beyond cards as: product catalog -> marketplace comps -> demand signals -> margin math -> sourcing alerts -> storefront sync. Pokemon remains the strongest current niche because collectibles have exact identity, sold comps, and emotional demand, but the same infrastructure can support other resale, affiliate, or dropshipping categories after replacing Pokemon-specific schemas and sources.
+
