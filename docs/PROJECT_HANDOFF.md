@@ -1003,3 +1003,10 @@ cd Pokemon/client && npm run build                                              
 - Odoo currently receives PokemonTool output through the product/inventory sync path. Odoo shows synced products and Pokemon metadata, but it does not yet expose a native live Go-backend intelligence dashboard. A future Odoo product tab could show Finder action, Seller Hub snapshot age, sold evidence, watcher/bid metrics, margin, and a link back to PokemonTool.
 - The Pokemon engine can be generalized beyond cards as: product catalog -> marketplace comps -> demand signals -> margin math -> sourcing alerts -> storefront sync. Pokemon remains the strongest current niche because collectibles have exact identity, sold comps, and emotional demand, but the same infrastructure can support other resale, affiliate, or dropshipping categories after replacing Pokemon-specific schemas and sources.
 
+## 2026-06-06 Repo Optimization And Directory Ownership Update
+
+- Added `docs/DIRECTORY_INFRASTRUCTURE.md` as the directory-by-directory ownership map for root NexusOS/Shopify, PokemonTool, Odoo, generated artifacts, and vendor/reference areas.
+- Confirmed `apps/web` is not part of the active Pokemon/Odoo runtime, but it is still wired to `docker-compose.dev.yml` as the NexusOS/Shopify frontend. Do not delete it unless the whole NexusOS/Shopify track is intentionally retired.
+- Confirmed root `docker-compose.yml` is the NexusOS infrastructure stack, while `docker-compose.dev.yml` adds root `web`, `gateway`, and `ai` app services. The active Pokemon/Odoo work uses `Pokemon/docker-compose.yml` plus `docker-compose.odoo.yml`.
+- Reviewed the root `Makefile`; the current checked-in version is scoped to the NexusOS/Shopify stack and no longer carries the stale Pokemon alias block that earlier local notes referenced.
+
