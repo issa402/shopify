@@ -46,6 +46,7 @@ services:
 
 networks:
   odoo-bridge:
+    external: true
     name: pokemon-odoo-bridge
 
 volumes:

@@ -10,7 +10,43 @@ Use `last30days` now for market pulse research. It is installed globally for thi
 ~/.agents/skills/last30days
 ```
 
-Do not auto-wire Hermes into production yet. Hermes is a full autonomous agent runtime with terminal access, memory, messaging gateways, cron, MCPs, and credential surfaces. That can be powerful for operations, but it should be installed as an ops copilot with scoped secrets and explicit approval boundaries.
+Hermes Agent is installed locally as an ops copilot, not as part of the app runtime. It is a full autonomous agent runtime with terminal access, memory, messaging gateways, cron, MCPs, and credential surfaces. That can be powerful for operations, but it must stay behind scoped secrets and explicit approval boundaries.
+
+Verified local install as of 2026-06-17:
+
+```text
+CLI:      /home/iscjmz/.local/bin/hermes
+Project:  /home/iscjmz/.hermes/hermes-agent
+Config:   /home/iscjmz/.hermes/config.yaml
+Env:      /home/iscjmz/.hermes/.env
+Skills:   /home/iscjmz/.hermes/skills
+Data:     /home/iscjmz/.hermes/{cron,sessions,logs,memories}
+Version:  Hermes Agent v0.16.0
+```
+
+`hermes doctor --fix` has migrated the config to v29. Core checks pass for Python, the CLI, Docker, Node, browser tooling, cron, terminal, file, memory, delegation, and skills. Remaining setup is optional provider/login/API-key work; add credentials only when a workflow needs them.
+
+Setup status after running `hermes setup --quick`:
+
+```text
+Terminal backend: local machine
+Messaging gateway: skipped for now
+Cron jobs: none configured yet
+Nous Portal auth: logged in via device_code OAuth
+Model provider: nous
+Default model: nvidia/nemotron-3-ultra:free
+Free portal tools: web, image generation, TTS, STT, browser automation
+Local Ollama fallback: available at 127.0.0.1:11434, currently only llama3:8b
+```
+
+Model policy for this machine:
+
+1. The current Free plan runs Hermes through Nous Portal on `nvidia/nemotron-3-ultra:free`. Treat it as better than the local `llama3:8b` fallback and good for smoke tests, summaries, research, and read-only ops reports.
+2. For high-stakes autonomous work, especially code edits, Docker triage, marketplace research, and multi-step planning, upgrade/select a stronger hosted model such as Claude Sonnet/Opus, GPT-5.x, Gemini Pro, or another high-quality provider.
+3. Keep local Ollama models as fallback for cheap summaries, classification, formatting, and offline tasks. Do not rely on `llama3:8b` as the primary autonomous operator.
+4. If a local model is needed, prefer a tool/JSON-oriented model such as Hermes-3 or another strong instruction/tool-calling model, then test it on read-only repo and health-check tasks before trusting it with cron.
+5. Never grant write access to eBay, Odoo, Shopify, production databases, or credentials until read-only reports are boring and reliable.
+
 
 ## High-value last30days use cases
 
@@ -73,13 +109,17 @@ Run with richer sources after adding optional API keys or browser sessions:
 scripts/run_last30days_vendor_pulse.sh --search reddit,hackernews,github,web,polymarket,youtube,tiktok
 ```
 
-Install Hermes only after deciding where it should live and which secrets it may access:
+Hermes Agent local verification:
 
 ```bash
-curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
-hermes setup
+hermes version
 hermes doctor
+hermes portal info
+hermes chat -q "Reply with exactly: Hermes online" -Q --max-turns 1
+hermes skills list
 ```
+
+Last smoke test: `hermes chat -q "Reply with exactly: Hermes online" -Q --max-turns 1` returned `Hermes online`.
 
 For this project, the first Hermes cron jobs should be read-only:
 

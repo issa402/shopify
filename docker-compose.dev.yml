@@ -51,6 +51,8 @@ services:
       DATABASE_URL: postgres://nexusos:nexusos_pass@postgres:5432/nexusos?sslmode=disable
       # Kafka uses its internal listener between containers.
       KAFKA_BROKERS: kafka:29092
+      # Redis backs webhook idempotency and other low-latency runtime state.
+      REDIS_URL: redis://redis:6379
       # The Go service listens on its default API port.
       PORT_GATEWAY: "8080"
       # The app should target Shopify's latest stable Admin API on May 1, 2026.

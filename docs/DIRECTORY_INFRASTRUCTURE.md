@@ -1,14 +1,14 @@
 # Directory Infrastructure Map
 
-Last updated: 2026-06-06
+Last updated: 2026-06-18
 
-This repo has three product tracks. The active customer-facing work is PokemonTool plus Odoo. The root NexusOS/Shopify stack is dormant but still wired and should not be deleted piecemeal.
+This repo has three product tracks. The active customer-facing work is PokemonTool plus Odoo. The root NexusOS/Shopify stack is also runnable in the full local universe and should not be deleted piecemeal.
 
 ## Decision Summary
 
 - Keep `Pokemon/`: active PokemonTool product and main app stack.
 - Keep `odoo/` and `docker-compose.odoo.yml`: active Odoo storefront/ERP bridge.
-- Keep `apps/web`, `services/gateway`, `services/ai`, `docker-compose.yml`, and `docker-compose.dev.yml`: dormant NexusOS/Shopify track. Delete only if we intentionally retire that entire track.
+- Keep `apps/web`, `services/gateway`, `services/ai`, `docker-compose.yml`, `docker-compose.dev.yml`, and `docker-compose.universe.yml`: NexusOS/Shopify track. It now runs beside PokemonTool and Odoo through `scripts/dev-universe.sh`. Delete only if we intentionally retire that entire track.
 - Do not commit generated/browser/cache directories such as `.codex-browser-use/`, `.codex-venvs/`, `Pokemon/.local/`, `Pokemon/reports/`, `Pokemon/client/dist/`, or `__pycache__/`.
 
 ## Root Directories
@@ -24,7 +24,7 @@ This repo has three product tracks. The active customer-facing work is PokemonTo
 | `docs` | Active documentation | Handoffs, infrastructure, strategy, runbooks | Keep | Update after architectural changes. |
 | `config` | Dormant support | Temporal dynamic config for NexusOS root stack | Keep while NexusOS remains. |
 | `schemas` | Support | Shared protocol/schema definitions | Keep | Review before deleting. |
-| `scripts` | Support | Root-level test/agent scripts | Keep | Contains A2A test tooling. |
+| `scripts` | Support | Root-level orchestration, test, and agent scripts | Keep | `scripts/dev-cardstore.sh` is the default runner for Odoo + PokemonTool + PokeTCG. `scripts/dev-universe.sh` is the full Odoo + NexusOS + PokemonTool runner. |
 | `infra` | Learning/reference | Infra lessons and practice scripts | Keep or archive later | Not runtime-critical. |
 | `future_standard_mastery` | Learning/reference | Training docs and artifacts | Keep or archive later | Not runtime-critical. |
 | `vendor/odoo` | Vendor/reference | Local ignored upstream Odoo source reference | Keep local, do not commit | Heavy third-party source, not project-owned. |
@@ -36,11 +36,13 @@ This repo has three product tracks. The active customer-facing work is PokemonTo
 
 | File | Status | Purpose | Notes |
 |---|---|---|---|
-| `docker-compose.yml` | Dormant NexusOS infra | Postgres, Redis, Qdrant, Kafka, Ollama, Temporal | Not used by active Pokemon/Odoo day-to-day. Keep while NexusOS remains. |
-| `docker-compose.dev.yml` | Dormant NexusOS app stack | Adds `web`, `gateway`, and `ai` app services | Depends on root `apps/web`, `services/gateway`, `services/ai`. |
+| `docker-compose.yml` | NexusOS infra | Postgres, Redis, Qdrant, Kafka, Ollama, Temporal | Used underneath the NexusOS local universe path. Keep while NexusOS remains. |
+| `docker-compose.dev.yml` | Active in full local universe | Adds NexusOS `web`, `gateway`, and `ai` app services | Used with `docker-compose.universe.yml` by `scripts/dev-universe.sh`. |
+| `docker-compose.universe.yml` | Active local override | Assigns non-conflicting NexusOS host ports | Keeps NexusOS beside Pokemon/Odoo without port collisions. |
 | `docker-compose.odoo.yml` | Active Odoo stack | Odoo Community plus Odoo Postgres | Shares `pokemon-odoo-bridge` with PokemonTool. |
 | `Pokemon/docker-compose.yml` | Active Pokemon stack | PokemonTool Postgres, Redis, RabbitMQ, Go API, React client, consumers, analytics, scraping, PokeTCG, observability | Main product runtime. |
-| `Pokemon/docker-compose.local-no-postgres-port.yml` | Active local override | Keeps local Postgres host access for host-side tools | Used for local Seller Hub research/automation. |
+| `Pokemon/docker-compose.universe.yml` | Active local override | Assigns non-conflicting Pokemon host ports | Use this with full universe orchestration. |
+| `Pokemon/docker-compose.local-no-postgres-port.yml` | Legacy/isolated local override | Keeps local Postgres host access for host-side tools | Prefer `Pokemon/docker-compose.universe.yml` when running all stacks together. |
 | `Pokemon/docker-compose.selfhost.yml` | Support | Self-host/friend access deployment variant | Keep. |
 | `Pokemon/docker-compose.prod.yml` | Support | Production deployment variant | Keep and verify before use. |
 

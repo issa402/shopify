@@ -1,6 +1,6 @@
 # PokemonTool Project Infrastructure
 
-Last updated: 2026-06-05
+Last updated: 2026-06-18
 
 ## Scope
 
@@ -36,14 +36,78 @@ It writes reports under `Pokemon/reports/last30days/`. Current no-key sources ar
 
 Use the pulse output to propose watchlist additions, explain demand/risk, and improve vendor-facing copy. Do not let social buzz override sold comps, Seller Hub evidence, margin math, or exact card/slab matching.
 
-Hermes Agent is recommended only as an ops copilot layer for scheduled reports, Telegram/Slack operator access, and incident triage. Do not put Hermes in the app request path or give it broad write access to Odoo, eBay, Shopify, or production data without narrow approval boundaries.
+Hermes Agent is installed locally only as an ops copilot layer for scheduled reports, Telegram/Slack operator access, and incident triage. Do not put Hermes in the app request path or give it broad write access to Odoo, eBay, Shopify, or production data without narrow approval boundaries. The local install lives under `~/.hermes/`, with the CLI at `~/.local/bin/hermes`; see `docs/AGENT_OPS_HERMES_LAST30DAYS.md` for the verified status and boundaries.
 
 ## Runtime Stacks
+
+### Focused Card-Store Orchestration
+
+For the active Pokemon card-commerce product, use the focused Odoo + PokemonTool stack by default:
+
+```bash
+cd /home/iscjmz/shopify/shopify
+scripts/dev-cardstore.sh up
+scripts/dev-cardstore.sh health
+scripts/dev-cardstore.sh ps
+scripts/dev-cardstore.sh down
+```
+
+This starts Odoo, PokemonTool, and PokeTCG only. It intentionally does not start NexusOS, Kafka, Temporal, Qdrant, or local Ollama. Use it when building or testing the card vendor product.
+
+Command meanings:
+
+- `up`: starts the focused runtime in detached Docker mode.
+- `health`: checks the user-facing and service-facing endpoints that matter for the card store.
+- `ps`: shows the containers that belong to the focused runtime.
+- `down`: stops the focused runtime.
+- `config`: renders the combined Compose configuration so port/network mistakes are visible before startup.
+
+This script exists so the default local command does not accidentally heat the machine by starting NexusOS, Ollama, Kafka, Temporal, or browser scraping when the work is only Pokemon/Odoo.
+
+Browser scraping for Facebook Marketplace and Mercari is opt-in because those sources are brittle, heavier, and not needed for every local run:
+
+```bash
+scripts/dev-cardstore.sh scraping-up
+scripts/dev-cardstore.sh scraping-down
+scripts/dev-cardstore.sh up-with-scraping
+```
+
+### Local Universe Orchestration
+
+The clean local entry point is now the root dev-universe script:
+
+```bash
+cd /home/iscjmz/shopify/shopify
+scripts/dev-universe.sh up
+scripts/dev-universe.sh health
+scripts/dev-universe.sh ps
+scripts/dev-universe.sh down
+```
+
+It starts three independent compose stacks side by side:
+
+```text
+Odoo stack      -> docker-compose.odoo.yml
+NexusOS stack   -> docker-compose.dev.yml + docker-compose.universe.yml
+PokemonTool     -> Pokemon/docker-compose.yml + Pokemon/docker-compose.universe.yml
+```
+
+The script creates or reuses the external Docker network `pokemon-odoo-bridge`, then starts Odoo, NexusOS, and PokemonTool with non-conflicting host ports. Use this for full local development. Use the individual compose files only when intentionally isolating one stack.
+
+Why this was needed:
+
+- Odoo, NexusOS, and PokemonTool were all valid individually, but their Compose files were not originally arranged as one coordinated local system.
+- Multiple stacks wanted common host ports such as Postgres, Redis, web, and monitoring ports.
+- Docker can run many Postgres/Redis containers at once, but it cannot publish two containers to the same host port.
+- The universe override files keep each product stack separate while assigning non-conflicting host ports and a shared external network only where cross-stack traffic is needed.
+
+Verified on 2026-06-17: the full universe runs concurrently after declaring the Odoo bridge network as external and adding a Nexus startup retry for Kafka health races. The health command passed for Odoo storefront, NexusOS gateway/AI/web, Pokemon API/web, and PokeTCG search. Nexus gateway also now receives `REDIS_URL=redis://redis:6379`, so webhook idempotency is backed by Redis in local dev instead of being disabled.
 
 ### PokemonTool Docker Stack
 
 Main file: `Pokemon/docker-compose.yml`
-Local override: `Pokemon/docker-compose.local-no-postgres-port.yml`
+Full-universe local override: `Pokemon/docker-compose.universe.yml`
+Older isolated local override: `Pokemon/docker-compose.local-no-postgres-port.yml`
 
 Services:
 
@@ -53,20 +117,23 @@ Services:
 - `server`: Go API on `http://127.0.0.1:3001`.
 - `client`: React/Vite dashboard served on `http://127.0.0.1:5173`.
 - `api-consumer`: Python marketplace ingestion, eBay Browse API, Seller Hub tooling, live slab research.
-- `scraping-service`: Go scraping worker for marketplace collection paths.
+- `scraping-service`: optional Go browser-scraping worker for Facebook/Mercari marketplace collection paths. It is behind the `browser-scraping` Compose profile and is not part of the default card-store stack.
 - `analytics-engine`: Python trend/deal analytics.
 - `poketcg`: local exact Pokemon card and market search service on `http://127.0.0.1:8765`.
 - `prometheus`, `grafana`, `loki`, `promtail`: observability.
 
-Key local URLs:
+Key local URLs when using `scripts/dev-universe.sh`:
 
 ```text
 Pokemon dashboard: http://127.0.0.1:5173
 Pokemon API:       http://127.0.0.1:3001
 PokeTCG:           http://127.0.0.1:8765
-RabbitMQ UI:       http://127.0.0.1:15672
-Grafana:           http://127.0.0.1:3000
-Prometheus:        http://127.0.0.1:9090
+RabbitMQ UI:       http://127.0.0.1:15673
+Grafana:           http://127.0.0.1:3002
+Prometheus:        http://127.0.0.1:9091
+Loki:              http://127.0.0.1:3101
+Postgres:          127.0.0.1:55433
+Redis:             127.0.0.1:6381
 ```
 
 ### Odoo Stack
@@ -84,9 +151,28 @@ Key local URLs:
 ```text
 Odoo storefront: http://127.0.0.1:8069/pokecard-store
 Odoo login:      http://127.0.0.1:8069/web/login?db=pokecard_store
+Odoo Postgres:   127.0.0.1:55432
+```
+
+NexusOS local URLs when using `scripts/dev-universe.sh`:
+
+```text
+NexusOS web:      http://127.0.0.1:3000
+NexusOS gateway:  http://127.0.0.1:8080
+NexusOS AI:       http://127.0.0.1:8000
+Temporal UI:      http://127.0.0.1:8088
+Qdrant:           http://127.0.0.1:6333
+Nexus Postgres:   127.0.0.1:55434
+Nexus Redis:      127.0.0.1:6380
+Kafka:            127.0.0.1:9092
+Ollama:           127.0.0.1:11434
 ```
 
 PokemonTool and Odoo share the external Docker network `pokemon-odoo-bridge`. The Pokemon Go API calls Odoo at `http://shopify-odoo:8069` from inside Docker.
+
+### NexusOS Boundary
+
+NexusOS is useful for the broader Shopify automation platform, agent workflow experiments, Kafka/Temporal eventing, and generic merchant automation. It is not required for the Pokemon card-commerce product. If a capability is specifically about card inventory, pricing evidence, Odoo products, storefront publishing, orders, or vendor sourcing, build it in PokemonTool/Odoo first. Only use NexusOS when the feature genuinely needs cross-shop orchestration or the broader Shopify platform.
 
 ## Database Ownership
 
@@ -145,6 +231,47 @@ PriceCharting movers + configured targets
 ```
 
 Finder is card-and-grade-specific. Generic research targets are kept as research rows, but they cannot be approved as exact buys until an exact listing exists.
+
+### Current Readiness Notes
+
+The local universe is runnable, but production readiness still depends on data quality and marketplace reliability, not only green containers:
+
+- `Pokemon /metrics` currently reports critical freshness for `price_history` and `deals`; `card_listings`, `alerts`, and `cards` are fresh.
+- eBay Browse API is working and publishing listings through RabbitMQ.
+- Scrapling/eBay HTML fallback is receiving eBay `403` responses in current logs, so treat it as an optional fallback, not a primary source.
+- Facebook Marketplace and Mercari browser scraping start successfully, but Facebook selectors timed out and Mercari can time out; these scrapers need selector/session hardening before they are launch-critical.
+- The scraping service now installs only Chromium and persists Playwright browser/driver caches in named Docker volumes to avoid repeated Firefox/WebKit downloads and reduce startup churn.
+
+### Operator Workflow Before Editing Services
+
+Before adding a new service or changing Compose wiring, use this lightweight workflow:
+
+```bash
+git status --short
+git diff --stat
+scripts/dev-cardstore.sh config
+scripts/dev-cardstore.sh health
+```
+
+Use `scripts/dev-cardstore.sh` for card-store changes unless the change explicitly touches NexusOS. Use `scripts/dev-universe.sh` only when validating cross-stack behavior. After changing Docker ports, networks, volumes, profiles, or env vars, run `config` first so Compose catches invalid YAML or service wiring before containers start.
+
+When adding a service, document these items in the same PR/session:
+
+- which product owns it: PokemonTool, Odoo, NexusOS, or ops tooling
+- whether it is default-on or profile/opt-in
+- which host ports it publishes, if any
+- which Docker networks it joins
+- which env vars/secrets it requires
+- how to health-check it
+- what happens when it is down
+
+### eBay Research Surfaces
+
+There are three different eBay/data-acquisition paths. They should not be confused:
+
+1. **eBay Browse API active listings**: `services/api-consumer/services/ebay_service.py` and `repositories/ebay_repo.py` call eBay's API using credentials from `Pokemon/.env`. Results are normalized, filtered for exact card/set/grade/language, and can be published to RabbitMQ as listing events.
+2. **Seller Hub Product Research**: `services/api-consumer/services/seller_hub_research.py` uses a local Playwright browser profile to read authenticated Seller Hub ACTIVE and SOLD research pages. It stores metrics in `seller_hub_research_metrics`; it does not store eBay credentials or cookies in Postgres.
+3. **Scrapling sold-comps ingestion**: documented in `docs/SCRAPLING_INTEGRATION.md`. This is selector-config based extraction for approved pages. It is useful for extra sold-comp sources but should stay dry-run until selectors and source terms are verified.
 
 ### Seller Hub Product Research
 
@@ -251,22 +378,38 @@ Odoo product sync uses `pokemon_inventory_id` as the stable key.
 
 ## Operational Commands
 
-Start Pokemon stack:
+Start the full local universe:
+
+```bash
+cd /home/iscjmz/shopify/shopify
+scripts/dev-universe.sh up
+scripts/dev-universe.sh health
+scripts/dev-universe.sh ps
+```
+
+Stop everything started by the universe runner:
+
+```bash
+scripts/dev-universe.sh down
+```
+
+Start Pokemon only, when intentionally isolating it from NexusOS/Odoo:
 
 ```bash
 cd /home/iscjmz/shopify/shopify/Pokemon
-docker compose -f docker-compose.yml -f docker-compose.local-no-postgres-port.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.universe.yml up -d
 ```
 
-Check services:
+Check Pokemon services directly:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.local-no-postgres-port.yml ps --all
+docker compose -f docker-compose.yml -f docker-compose.universe.yml ps --all
 curl http://127.0.0.1:3001/health
-curl http://127.0.0.1:5173/finder
+curl http://127.0.0.1:5173/watchlist
+curl "http://127.0.0.1:8765/search?q=Radiant%20Charizard&limit=1"
 ```
 
-Check Odoo:
+Check Odoo directly:
 
 ```bash
 curl http://127.0.0.1:8069/pokecard-store

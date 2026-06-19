@@ -285,3 +285,223 @@ jsonb_build_object: Postgres function that builds JSON directly inside SQL. We u
 
 =========================== END CODEX DEBUG ====================================
 
+
+=========================== CURRENT PROJECT MAP ====================================
+The active app is the card-store system, not NexusOS. For normal work right now think:
+PokemonTool = the card brain and vendor decision app
+PokeTCG = exact Pokemon card identity and market lookup
+Odoo = the public store, products, orders, customers, invoices, and ERP
+Hermes = optional operator assistant for reports/research, not in the customer request path
+NexusOS = optional broader Shopify/agent platform, useful later but not required for the card store
+
+Default stack to run now:
+cd /home/iscjmz/shopify/shopify
+scripts/dev-cardstore.sh up
+scripts/dev-cardstore.sh health
+
+That starts Odoo + PokemonTool + PokeTCG. It does not start NexusOS, Kafka, Temporal, Qdrant, Ollama, or the heavy browser scraping worker.
+
+Full universe stack:
+cd /home/iscjmz/shopify/shopify
+scripts/dev-universe.sh up
+scripts/dev-universe.sh health
+
+That starts Odoo + NexusOS + PokemonTool + PokeTCG. Use this only when testing the whole root Shopify/NexusOS platform together with the Pokemon/Odoo card store.
+
+Why Nexus is not needed for the card store:
+NexusOS is for broader Shopify merchant automation, agent workflows, Kafka/Temporal experiments, AI routes, and cross-shop workflows. The actual card selling path is already PokemonTool -> Odoo. If we are adding card pricing, card sourcing, inventory approval, Odoo product sync, storefront filters, Seller Hub evidence, or vendor alerts, build it in PokemonTool/Odoo first.
+
+Why Odoo matters:
+Odoo is not the card research brain. Odoo is the store/ERP layer. It should hold products that are approved for sale, show the public storefront, handle orders, customers, invoices, refunds, and back-office product metadata. PokemonTool decides what is worth listing; Odoo sells and manages it.
+
+Why PokeTCG matters:
+PokeTCG stops the app from treating "Charizard" as one generic product. It returns exact variants like card id, set, number, and market fields. That exact identity is what lets watchlists, inventory, alerts, and slab logic avoid false matches.
+
+=========================== CURRENT COMMANDS ====================================
+scripts/dev-cardstore.sh up: starts the focused card-store stack. This is the default command for Pokemon/Odoo work.
+scripts/dev-cardstore.sh health: checks Odoo storefront, Pokemon API, Pokemon web, and PokeTCG search.
+scripts/dev-cardstore.sh ps: shows containers for the focused stack.
+scripts/dev-cardstore.sh down: stops the focused stack.
+scripts/dev-cardstore.sh scraping-up: starts optional Facebook/Mercari browser scraping.
+scripts/dev-cardstore.sh scraping-down: stops optional browser scraping.
+scripts/dev-cardstore.sh up-with-scraping: starts the focused stack plus optional browser scraping.
+
+scripts/dev-universe.sh up: starts Odoo + NexusOS + PokemonTool together.
+scripts/dev-universe.sh health: checks all main endpoints across the full universe.
+scripts/dev-universe.sh ps: shows all universe containers.
+scripts/dev-universe.sh down: stops the full universe.
+
+When to use which:
+Use dev-cardstore for normal card-store development.
+Use dev-universe only when you need NexusOS.
+Use scraping-up only when testing Facebook/Mercari scraping. Do not leave it running for normal work because browser automation is heavier and those sites are brittle.
+
+=========================== WHY DOCKER COULD NOT RUN TOGETHER BEFORE ====================================
+Before the local universe files, multiple compose stacks wanted the same host ports. Example: Postgres commonly wants 5432, Redis wants 6379, web apps want 3000/5173, and monitoring tools also expose ports. Docker cannot bind two containers to the same host port at the same time.
+
+The fix was not to smash everything into one giant compose file. The fix was:
+1. Keep each product stack in its own compose file.
+2. Add override files for local non-conflicting host ports.
+3. Create a shared external Docker network called pokemon-odoo-bridge where cross-stack services need to talk.
+4. Add wrapper scripts so you do not have to remember every compose file and port override.
+
+What changed:
+docker-compose.odoo.yml now uses the external pokemon-odoo-bridge network.
+docker-compose.universe.yml assigns NexusOS local ports that do not collide with Pokemon/Odoo.
+Pokemon/docker-compose.universe.yml assigns Pokemon local ports that do not collide with Odoo/Nexus.
+scripts/dev-universe.sh creates/reuses the shared network and starts each stack in the right order.
+scripts/dev-cardstore.sh starts only the useful card-store pieces by default.
+
+Important Docker rule:
+Inside a container, 127.0.0.1 means that same container, not your laptop and not another container. Containers should call each other by service name on a shared Docker network, like http://poketcg:8765 or http://shopify-odoo:8069.
+
+Host ports are for your browser or terminal:
+http://127.0.0.1:5173 means your laptop reaches the Pokemon web container.
+http://127.0.0.1:8069 means your laptop reaches Odoo.
+http://poketcg:8765 means a Docker container reaches the PokeTCG container.
+
+=========================== CURRENT LOCAL URLS ====================================
+Pokemon dashboard: http://127.0.0.1:5173
+Pokemon API: http://127.0.0.1:3001
+PokeTCG: http://127.0.0.1:8765
+Odoo storefront: http://127.0.0.1:8069/pokecard-store
+Odoo login: http://127.0.0.1:8069/web/login?db=pokecard_store
+RabbitMQ UI: http://127.0.0.1:15673
+Grafana: http://127.0.0.1:3002
+Prometheus: http://127.0.0.1:9091
+
+NexusOS only when using dev-universe:
+Nexus web: http://127.0.0.1:3000
+Nexus gateway: http://127.0.0.1:8080
+Nexus AI: http://127.0.0.1:8000
+Temporal UI: http://127.0.0.1:8088
+Qdrant: http://127.0.0.1:6333
+
+=========================== SEARCHING A CARD - WHAT ACTUALLY HAPPENS ====================================
+When you type a card name in the UI:
+React UI calls the Go API.
+Go API calls PokeTCG.
+PokeTCG returns exact card variants with set/card/market fields.
+You select the exact result.
+Then the app can save a watchlist row or inventory row with exact card metadata.
+
+After a watchlist target exists:
+api-consumer reads internal watchlist targets from the Go API.
+api-consumer searches eBay Browse API for active listings.
+api-consumer filters listings by card name, set, card number, grade, language, and raw/slab lane.
+Matched listings go to RabbitMQ.
+The Go worker consumes RabbitMQ messages.
+The Go worker writes listing snapshots, creates deduped alerts, and pushes live SSE events to the frontend.
+
+Seller Hub Product Research is separate:
+It uses your local logged-in browser profile.
+It can read ACTIVE and SOLD Product Research metrics.
+It stores snapshots in Postgres.
+It is stronger evidence than active listing asks because SOLD means buyers actually paid.
+It should not run on every keystroke. Use it for selected targets, batch Finder targets, and serious sourcing evidence.
+
+Scrapling is separate too:
+Scrapling is selector-based HTML extraction for approved pages with known CSS selectors.
+It is wired and tested, but it is not the default eBay path.
+If eBay blocks a page with 403, Scrapling cannot magically bypass that. It is a tool for known allowed pages, dry-runs, and extra sold-comp sources.
+
+=========================== WHY BROWSER SCRAPING IS OPTIONAL ====================================
+Facebook Marketplace and Mercari scraping use browser automation. That means a headless browser starts, loads real pages, waits for selectors, parses results, and publishes listing messages. This is heavier than API calls and more likely to break when a website changes HTML, blocks automation, or requires login.
+
+That is why scraping-service is behind the browser-scraping Compose profile. Normal development should not pay that CPU/RAM cost. Turn it on only when testing those marketplace paths.
+
+=========================== SECURITY CHANGES MADE ====================================
+Pokemon/client/nginx.conf now sends browser security headers:
+Content-Security-Policy: limits what scripts/images/connections the frontend can use.
+X-Frame-Options: stops the app from being embedded in another site.
+X-Content-Type-Options: stops MIME sniffing.
+Referrer-Policy: limits referrer leakage.
+Permissions-Policy: blocks unused browser permissions like camera/microphone/geolocation/payment.
+
+Current remaining security work before real public production:
+Move frontend JWT storage away from localStorage.
+Replace SSE token-in-query behavior with short-lived stream tokens.
+Keep eBay/Odoo/Shopify/database credentials only in env files or a secret manager.
+Do not store Seller Hub browser cookies in Postgres or git.
+Run security review before exposing any service beyond localhost.
+
+=========================== GIT / DIFF WORKFLOW ====================================
+git status --short: shows changed files in the smallest useful format.
+git diff -- file: shows exactly what changed in one file.
+git diff --stat: shows a summary of changed files and line counts.
+git diff --check: catches whitespace errors before commit.
+git log --oneline -n 10: shows recent commits.
+git branch --show-current: shows current branch.
+
+How to think about git diff:
+A diff shows removed lines with "-" and added lines with "+". It is the proof of what changed. Before committing or asking someone to trust a change, inspect the diff for accidental secrets, unrelated edits, huge generated files, and broken config.
+
+Do not run destructive git commands unless you mean it:
+git reset --hard deletes local changes.
+git checkout -- file replaces a file with the version from git.
+Those can wipe useful work, so use them only intentionally.
+
+=========================== CURRENT OPEN PRODUCT WORK ====================================
+The local stack can run. The big product work is not "more containers"; it is better product trust and workflow:
+Fix data freshness for price_history and deals.
+Add visible freshness state in the dashboard.
+Make Odoo sync report exactly what is READY, SYNCED, FAILED, STALE, or NEEDS_REPRICE.
+Add storefront filters for raw/slab/sealed, set, grade, condition, and price range.
+Make pricing decisions depend on exact identity, SOLD evidence, Seller Hub snapshots, fees, shipping, and margin.
+Keep browser scraping optional until selectors/sessions are hardened.
+Add E2E tests once Chrome/Playwright is available on the machine.
+
+=========================== PLANE PROJECT MANAGEMENT ====================================
+Plane is like a self-hosted Jira/Linear style project-management app. It is not GitHub and it is not part of the Pokemon/Odoo runtime.
+
+What Plane is good for:
+- work items/tasks
+- cycles/sprints
+- modules/roadmaps
+- product specs and notes through Pages
+- triage and execution tracking
+- keeping product decisions out of chat history
+
+What GitHub is good for:
+- code
+- branches
+- commits
+- pull requests
+- code review
+- CI checks
+- release history
+
+Big tech usually uses both:
+Jira or similar tool for product/project tracking, GitHub/GitLab/Bitbucket/internal Git for code, and Confluence/Notion/Google Docs/GitHub markdown for docs. Plane can replace the Jira/Linear part for this local project.
+
+Where Plane is installed:
+/home/iscjmz/ops/plane-selfhost
+
+Why not inside /home/iscjmz/shopify/shopify:
+Plane is a full third-party AGPL app with its own Docker stack, database, queue, object storage, frontend, backend, and proxy. It should stay outside the Shopify repo. The repo can document how we use Plane, but it should not vendor Plane source/runtime files.
+
+Plane local URL:
+http://localhost:8095
+
+Plane commands:
+/home/iscjmz/ops/plane-selfhost/plane.sh start
+/home/iscjmz/ops/plane-selfhost/plane.sh status
+/home/iscjmz/ops/plane-selfhost/plane.sh logs api
+/home/iscjmz/ops/plane-selfhost/plane.sh stop
+/home/iscjmz/ops/plane-selfhost/plane.sh backup
+
+Plane services:
+web, admin, space, api, worker, beat-worker, migrator, live, Postgres, Valkey/Redis, RabbitMQ, MinIO, proxy.
+
+Local safety choices:
+Plane uses ports 8095 and 8445 so it does not collide with Pokemon/Odoo/Nexus.
+Plane proxy is bound to 127.0.0.1 only.
+Plane env secrets are local in /home/iscjmz/ops/plane-selfhost/plane-app/plane.env and must not be committed or pasted.
+
+Recommended workspace:
+Workspace: Card Vendor OS
+Projects: PokemonTool, Odoo Storefront, PokeTCG Identity, Marketplace Research, Infrastructure/Ops, Security/Compliance, Documentation
+Modules: Watchlist and Alerts, Seller Hub Research, eBay Browse API, Scrapling/Sold Comps, Inventory to Odoo Sync, Storefront Search and Filters, Data Freshness, Auth and Session Hardening
+
+Use Plane when planning work. Stop Plane when the machine is warm and you are just coding Pokemon/Odoo.
+

@@ -9,6 +9,16 @@ Verified source:
 - License: BSD-3-Clause
 - Requires Python 3.10+
 
+## Current Status
+
+Scrapling is available and wired as a selector-based sold-comps extractor, but it is not the only eBay research path and should not be treated as the default live eBay integration.
+
+Current marketplace research paths:
+
+- eBay Browse API active listings: implemented in `services/api-consumer/services/ebay_service.py`; used by watchlist scans, live eBay lookups, and RabbitMQ alert publishing.
+- Seller Hub Product Research: implemented in `services/api-consumer/services/seller_hub_research.py`; uses a local Playwright browser profile for authenticated ACTIVE/SOLD research metrics.
+- Scrapling sold-comps ingestion: implemented in `services/api-consumer/services/scrapling_sold_comps.py`; useful for approved HTML pages with explicit selectors.
+
 ## Why We Use It
 
 Scrapling is a data acquisition tool for the PokemonTool money loop:
@@ -98,6 +108,16 @@ python3 scrapling_sold_comps_ingest.py \
   --title-selector '.title::text' \
   --price-selector '.price::text'
 ```
+
+## What Scrapling Is And Is Not
+
+Scrapling is a Python HTML extraction/fetching library. In this repo it takes an approved page URL plus CSS selectors and returns structured sold-comp rows. It is not an auto-browser shopping bot, not an auto-buy system, and not where eBay API credentials live.
+
+For eBay specifically:
+
+- Active listing search should use the eBay Browse API path first.
+- Authenticated Seller Hub research should use the Playwright profile path.
+- Scrapling should be used when an operator has approved a source page and selector config for sold comps.
 
 ## Guardrails
 

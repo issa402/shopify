@@ -26,6 +26,58 @@ The product is moving from "watch a card by name" toward "watch a specific card 
 - User can set a buy target manually, or as a percentage below market, for example 20% below market = `$18.66`.
 - Watchlist alerts should fire for listings at or below that target.
 
+## Current Default Local Stack
+
+For normal card-store work, use the focused runtime first:
+
+```bash
+cd /home/iscjmz/shopify/shopify
+scripts/dev-cardstore.sh up
+scripts/dev-cardstore.sh health
+scripts/dev-cardstore.sh ps
+```
+
+This starts Odoo, PokemonTool, and PokeTCG. It intentionally skips NexusOS, Kafka, Temporal, Qdrant, Ollama, and optional browser scraping. The product path is:
+
+```text
+PokemonTool -> Odoo storefront
+PokeTCG -> exact card identity support
+Seller Hub/eBay -> pricing and marketplace evidence
+```
+
+Use `scripts/dev-universe.sh` only when the task actually needs NexusOS or the broader Shopify automation platform.
+
+## Current Local Universe
+
+Use this as the normal local runtime when you need the whole project:
+
+```bash
+cd /home/iscjmz/shopify/shopify
+scripts/dev-universe.sh up
+scripts/dev-universe.sh health
+scripts/dev-universe.sh ps
+```
+
+This starts Odoo, NexusOS, and PokemonTool together. The local universe uses override files to avoid port collisions:
+
+```text
+Odoo:       docker-compose.odoo.yml
+NexusOS:    docker-compose.dev.yml + docker-compose.universe.yml
+Pokemon:    Pokemon/docker-compose.yml + Pokemon/docker-compose.universe.yml
+```
+
+Key URLs:
+
+```text
+Pokemon app:      http://127.0.0.1:5173
+Pokemon API:      http://127.0.0.1:3001
+PokeTCG:          http://127.0.0.1:8765
+Odoo storefront:  http://127.0.0.1:8069/pokecard-store
+NexusOS web:      http://127.0.0.1:3000
+Nexus gateway:    http://127.0.0.1:8080
+Nexus AI:         http://127.0.0.1:8000
+```
+
 ## Current Architecture
 
 Root repo:
@@ -71,6 +123,55 @@ React card search
   -> Go API response
   -> watchlist target calculation
 ```
+
+## Card Search And Marketplace Research Flow
+
+When a user searches a card in Watchlist or Inventory, not every research system runs immediately. The flow is staged:
+
+```text
+User types card name
+  -> React calls Go API `/api/cards/tcg-search`
+  -> Go calls PokeTCG at `http://poketcg:8765`
+  -> PokeTCG returns exact Pokemon card variants and market fields
+  -> user selects exact card/set
+```
+
+After selection, the app can use different research surfaces depending on the button or background job:
+
+1. **PokeTCG exact card lookup** is the first search layer. It identifies the card and gives market price context. This is what powers below-market target calculation.
+2. **eBay Browse API active listings** powers live active-listing lookup and watchlist scans. `api-consumer` calls eBay, filters title/set/card number/grade/language, and can publish matched listings into RabbitMQ. The Go worker consumes those messages, persists `card_listings`, matches watchlists, creates alerts, and pushes SSE events.
+3. **Seller Hub Product Research** is not automatically run on every keystroke. It uses the local Playwright Seller Hub profile to collect ACTIVE and SOLD metrics for selected card/grade targets. Its output goes into `seller_hub_research_metrics` and strengthens `vendorInsight` scoring. SOLD evidence is stronger than active ask evidence.
+4. **Scrapling** is not the default eBay path. It is a selector-based extractor for approved pages with known CSS selectors. Use it for extra sold-comp sources after dry-run verification.
+
+Important distinction: active eBay asks tell us what sellers are asking now; Seller Hub SOLD and sold comps tell us what buyers actually paid. The app should not recommend `SOURCE_NOW` from active asks alone.
+
+## General Ecommerce Adaptation
+
+PokemonTool can be adapted into a broader ecommerce product-research engine, but not by only changing labels. The reusable parts are:
+
+- React dashboard patterns: search, watchlist, inventory, alerts, opportunities.
+- Go API layering: routes -> handlers -> services -> stores.
+- Postgres/RabbitMQ/SSE event loop.
+- eBay Browse API ingestion and listing filtering pattern.
+- Seller Hub research snapshots.
+- Odoo inventory-to-store publishing bridge.
+- Vendor decision scoring pattern.
+
+The Pokemon-specific parts to replace are:
+
+- PokeTCG exact-card identity service.
+- Pokemon set/card-number/slab-tier matching rules.
+- `watchlists` and `inventory` metadata fields tied to Pokemon cards.
+- slab grade lanes and PSA/CGC/BGS-specific logic if the new category is not graded collectibles.
+- category-specific pricing benchmarks such as PriceCharting.
+
+For a general ecommerce research app, create a product identity layer like:
+
+```text
+query -> normalized product candidates -> brand/model/MPN/UPC/category -> marketplace active listings -> sold comps/Seller Hub -> margin scoring -> inventory/listing decision
+```
+
+That architecture would work for electronics, sneakers, toys, collectibles, parts, or niche resale categories, but each category needs its own identity and false-positive filters.
 
 ## Important Docker Networking Rule
 
@@ -204,6 +305,15 @@ Verified locally on 2026-06-01 for `ru1-12 Lucario Pokemon Rumble #12`:
 - Follow-up hardening on 2026-06-02: Watchlist refresh now calls raw, generic any-slab, and fixed slab-tier lookups; passes `cardNumber` through frontend -> Go -> api-consumer; appends dynamic summary tiers returned by the backend instead of hiding tiers outside the fixed lane list; backend summary no longer filters out unlisted parsed slab tiers. Slab parser now recognizes lower grades down to 1 and `GSG`. Card-number matching rejects conflicting fractions like `025/084` for an English `1/109` card but accepts exact slab titles that omit the card number.
 - Important eBay limitation observed on 2026-06-02: eBay public HTML search and Playwright browser fetches returned 403/error pages from this environment for `Azumarill 1/109 Team Rocket Returns`, while a human browser can show more rows. eBay Browse API initially missed visible public rows when `English` was injected into the query. After removing language terms from the query and keeping language as a post-filter, live refresh returned raw rows, `PSA_8`, `CGC_9`, `CGC_10`, and `GRADED_UNKNOWN` for Azumarill. eBay Browse API still returned zero for the visible `PSA_3 James Theme Deck` row even with broader wording, so full parity with a human eBay session still requires a browser/session/proxy-backed collector or a user-authorized eBay/Terapeak data source.
 - `/api/cards/ru1-12/slab-summary?languagePreference=BOTH` returned only the relevant Rumble rows after removing bad rows from an earlier broad test.
+
+## Recent Fixes On 2026-06-15
+
+- Added `docker-compose.universe.yml`, `Pokemon/docker-compose.universe.yml`, and `scripts/dev-universe.sh` so Odoo, NexusOS, and PokemonTool can run together locally.
+- Installed and verified MemPalace locally, mined this repo into the `shopify` wing, and added the MemPalace MCP server to Codex config.
+- Fixed `InventoryPage.jsx` crash by defining `effectiveMarketPrice` locally.
+- Fixed SSE reconnect loop by exempting `/api/stream` from the 30-second chi timeout and adding heartbeat comments.
+- Fixed Watchlist add button gating so a user can add by selected PokeTCG result or by typed manual card name.
+- Rebuilt Pokemon client/server containers and verified full universe health.
 
 ## Current PokemonTool -> Odoo Store State
 
@@ -1010,3 +1120,40 @@ cd Pokemon/client && npm run build                                              
 - Confirmed root `docker-compose.yml` is the NexusOS infrastructure stack, while `docker-compose.dev.yml` adds root `web`, `gateway`, and `ai` app services. The active Pokemon/Odoo work uses `Pokemon/docker-compose.yml` plus `docker-compose.odoo.yml`.
 - Reviewed the root `Makefile`; the current checked-in version is scoped to the NexusOS/Shopify stack and no longer carries the stale Pokemon alias block that earlier local notes referenced.
 
+### 2026-06-17 Universe Verification And Reliability Pass
+
+- Verified that Odoo, NexusOS, PokemonTool, and PokeTCG can run concurrently through `scripts/dev-universe.sh`.
+- Fixed Odoo shared network configuration by marking `pokemon-odoo-bridge` as an external network in `docker-compose.odoo.yml`.
+- Hardened `scripts/dev-universe.sh up` with a Nexus startup retry after Kafka health races.
+- Added `REDIS_URL=redis://redis:6379` to the Nexus gateway dev environment so Shopify webhook idempotency uses Redis locally.
+- Improved Pokemon scraping-service startup by installing only Chromium through Playwright and adding persistent Playwright browser/driver cache volumes.
+- Generated `services/scraping-service/go.sum` so the scraper module can build/test reproducibly.
+- Verification passed: `scripts/dev-universe.sh config`, `scripts/dev-universe.sh health`, `go test ./...` in `Pokemon/services/scraping-service`.
+- Remaining readiness gaps: `price_history` and `deals` freshness are critical in metrics; Scrapling/eBay HTML fallback receives 403s; Facebook/Mercari selectors/timeouts need hardening before relying on them for core marketplace evidence.
+
+### 2026-06-17 Card-Store Focus Pass
+
+- Decided NexusOS is optional for the Pokemon card-commerce product. Default local work should use Odoo + PokemonTool + PokeTCG.
+- Added `scripts/dev-cardstore.sh` for focused card-store startup, health, ps, down, and optional browser-scraping commands.
+- Put Pokemon `scraping-service` behind the `browser-scraping` Compose profile so Facebook/Mercari browser scraping is opt-in.
+- Stopped NexusOS and the optional browser scraper; focused card-store health passes.
+- Added frontend security headers to `Pokemon/client/nginx.conf` and rebuilt the client. Verified CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and Permissions-Policy are present.
+- Added `docs/CARDSTORE_PRODUCT_STRATEGY.md` to define what belongs in PokemonTool, Odoo, Hermes, and NexusOS.
+
+### 2026-06-18 Documentation Consolidation Pass
+
+- Updated `Explanations_TO_EVERYTHING.md` at the bottom with the current project map, focused card-store commands, full-universe commands, Docker port/network explanation, card-search flow, eBay/Seller Hub/Scrapling boundaries, browser-scraping profile behavior, security notes, git-diff workflow, and current open product work.
+- Updated `docs/PROJECT_INFRASTRUCTURE.md` so the focused `scripts/dev-cardstore.sh` path is clearly the default for Pokemon/Odoo work and `scripts/dev-universe.sh` is only for cross-stack NexusOS testing.
+- Recorded why the stacks could not run side by side before: independent Compose files wanted conflicting host ports and lacked coordinated shared-network behavior. The current fix is override files plus the `pokemon-odoo-bridge` external network and wrapper scripts.
+- Added a service-change checklist: owner, default/profile behavior, ports, Docker networks, env/secrets, health check, and failure behavior.
+
+### 2026-06-18 Plane Project Management Install
+
+- Installed Plane self-hosted Community stack outside the repo at `/home/iscjmz/ops/plane-selfhost`.
+- Kept Plane out of `/home/iscjmz/shopify/shopify` because it is a third-party project-management application with its own Docker stack, not project source code.
+- Configured Plane for local ports `8095` HTTP and `8445` HTTPS to avoid Odoo/Pokemon/Nexus conflicts.
+- Bound Plane proxy ports to `127.0.0.1` only.
+- Generated local secrets in `plane-app/plane.env`; do not commit or paste them.
+- Added wrapper `/home/iscjmz/ops/plane-selfhost/plane.sh` with `start`, `stop`, `restart`, `status`, `logs`, `backup`, and `url`.
+- Added `docs/PLANE_PROJECT_MANAGEMENT.md` explaining how Plane fits with this project, how it differs from GitHub/Jira, services it runs, commands, and recommended workspace setup.
+- Verified Plane v1.3.1: Docker images pulled, migrations completed, API readiness returned `api ok`, and web responded HTTP 200 at `http://localhost:8095`.

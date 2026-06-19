@@ -111,6 +111,39 @@ shopify/
   └── Pokemon/               separate market-intelligence product
 ```
 
+## Local Development Universe
+
+The local all-in-one runner is:
+
+```bash
+cd /home/iscjmz/shopify/shopify
+scripts/dev-universe.sh up
+scripts/dev-universe.sh health
+scripts/dev-universe.sh ps
+```
+
+It composes three stacks without host-port conflicts:
+
+```text
+Odoo:       docker-compose.odoo.yml
+NexusOS:    docker-compose.dev.yml + docker-compose.universe.yml
+Pokemon:    Pokemon/docker-compose.yml + Pokemon/docker-compose.universe.yml
+```
+
+Important local endpoints:
+
+```text
+Odoo storefront:   http://127.0.0.1:8069/pokecard-store
+NexusOS web:       http://127.0.0.1:3000
+NexusOS gateway:   http://127.0.0.1:8080
+NexusOS AI:        http://127.0.0.1:8000
+Pokemon dashboard: http://127.0.0.1:5173
+Pokemon API:       http://127.0.0.1:3001
+PokeTCG:           http://127.0.0.1:8765
+```
+
+All three stacks can run concurrently on one workstation through the universe overrides.
+
 ## Runtime Topology
 
 ```text
@@ -624,3 +657,40 @@ So you were not crazy for being confused. The architecture is split between:
 - what is documented
 
 That is exactly the kind of thing an infrastructure engineer needs to learn to spot.
+
+
+## PokemonTool eBay And Marketplace Research
+
+PokemonTool has multiple market-data paths, each with a different job:
+
+```text
+PokeTCG local service
+  -> exact Pokemon card identity and market price lookup
+
+Watchlist / live eBay lookup
+  -> Go API /api/cards/ebay-listings
+  -> Python api-consumer eBay Browse API
+  -> strict title/set/card-number/grade/language filters
+  -> active listing observations
+
+Watchlist scan loop
+  -> api-consumer reads /api/internal/watchlist-targets
+  -> eBay active listings
+  -> RabbitMQ listings queue
+  -> Go notification worker
+  -> alerts table + SSE browser push
+
+Seller Hub Product Research
+  -> local Playwright browser profile
+  -> eBay Seller Hub ACTIVE/SOLD pages
+  -> seller_hub_research_metrics
+  -> slab opportunity scoring and vendorInsight
+
+Scrapling sold-comps ingestion
+  -> approved URL + selectors
+  -> parsed sold comps
+  -> slab_comps
+  -> analytics rescoring
+```
+
+The important product rule is that active asks, sold comps, and Seller Hub research are different evidence types. Active asks help find possible opportunities; sold comps and Seller Hub SOLD evidence carry more weight for whether the app should recommend sourcing.
