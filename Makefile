@@ -1,7 +1,7 @@
 # NexusOS 2026 — Developer Makefile
 # Run from repo root: c:\Users\isjim\OneDrive\Desktop\shopify
 
-.PHONY: help dev dev-app stop clean migrate agents test test-containers gateway ai web logs
+.PHONY: help dev dev-app stop clean migrate agents test test-containers gateway ai web logs odoo-doctor odoo-doctor-md odoo-validate odoo-up odoo-logs odoo-down
 
 # ─── Default ────────────────────────────────────────────────────────────────
 help:
@@ -94,3 +94,22 @@ agents:
 
 a2a-test:
 	cd scripts && python test_a2a_agent.py
+
+# ─── Odoo Storefront Infra ───────────────────────────────────────────────────
+odoo-doctor:
+	python3 odoo/scripts/odoo_infra_doctor.py
+
+odoo-doctor-md:
+	python3 odoo/scripts/odoo_infra_doctor.py --format markdown
+
+odoo-validate:
+	bash odoo/scripts/validate_odoo_scaffold.sh
+
+odoo-up:
+	docker compose -f docker-compose.odoo.yml --env-file odoo/.env up -d
+
+odoo-logs:
+	docker compose -f docker-compose.odoo.yml --env-file odoo/.env logs -f --tail=80 odoo
+
+odoo-down:
+	docker compose -f docker-compose.odoo.yml --env-file odoo/.env down

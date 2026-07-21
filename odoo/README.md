@@ -75,6 +75,14 @@ The addon depends on `website`, `website_sale`, and `product`, so Odoo installs 
 
 ## Useful Commands
 
+Run the read-only infrastructure doctor:
+
+```bash
+python3 odoo/scripts/odoo_infra_doctor.py
+# or
+make odoo-doctor
+```
+
 Check compose syntax:
 
 ```bash

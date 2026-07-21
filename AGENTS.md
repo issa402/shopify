@@ -5,10 +5,11 @@
 When a new AI/Codex session starts in this repo, read these in order:
 
 1. `AGENTS.md` first. This is the repo-level operating contract and should be treated as the always-on instruction file.
-2. `docs/PROJECT_HANDOFF.md` for the current product concept, Pokemon/PokeTCG status, architecture, working pieces, risks, and next steps.
-3. `docs/PROJECT_INFRASTRUCTURE.md` and `infra/WHOLE_SYSTEM_ARCHITECTURE.md` when the task involves local runtime, Docker Compose, service ports, Pokemon/Odoo/NexusOS integration, marketplace research, or eBay/Seller Hub/Scrapling flows.
-4. `future_standard_mastery/CODEX_SAFE_INTEGRATION.md` when the task involves Codex tools, MCP servers, browser automation, skills, memory, or outside repos.
-5. The specific service files for the current task. For the Shopify/NexusOS app, start with `docker-compose.dev.yml`, `docker-compose.yml`, `services/gateway/main.go`, `services/gateway/internal/dashboard/handler.go`, `services/ai/main.py`, and the relevant `apps/web/src/pages/*` file. For Pokemon/PokeTCG work, start with `Pokemon/docker-compose.yml`, `PokeTCG/pokeai-service/pokeai/api_server.py`, `Pokemon/server/routes/routes.go`, `Pokemon/server/handlers/card_handler.go`, `Pokemon/server/services/card_service.go`, and `Pokemon/client/src/pages/WatchlistPage.jsx`.
+2. `next phase jul202026.md` for the current phase, what is already done, what not to repeat, and the immediate Phase 2 production-shaped infrastructure roadmap.
+3. `docs/PROJECT_HANDOFF.md` for the current product concept, Pokemon/PokeTCG status, architecture, working pieces, risks, and next steps.
+4. `docs/PROJECT_INFRASTRUCTURE.md` and `infra/WHOLE_SYSTEM_ARCHITECTURE.md` when the task involves local runtime, Docker Compose, service ports, Pokemon/Odoo/NexusOS integration, marketplace research, or eBay/Seller Hub/Scrapling flows.
+5. `future_standard_mastery/CODEX_SAFE_INTEGRATION.md` when the task involves Codex tools, MCP servers, browser automation, skills, memory, or outside repos.
+6. The specific service files for the current task. For the Shopify/NexusOS app, start with `docker-compose.dev.yml`, `docker-compose.yml`, `services/gateway/main.go`, `services/gateway/internal/dashboard/handler.go`, `services/ai/main.py`, and the relevant `apps/web/src/pages/*` file. For Pokemon/PokeTCG work, start with `Pokemon/docker-compose.yml`, `PokeTCG/pokeai-service/pokeai/api_server.py`, `Pokemon/server/routes/routes.go`, `Pokemon/server/handlers/card_handler.go`, `Pokemon/server/services/card_service.go`, and `Pokemon/client/src/pages/WatchlistPage.jsx`.
 
 Do not assume old chat context is available. If the user asks "what is left" or "what did we do", use the Current Shopify/NexusOS State section below before making changes.
 
@@ -97,6 +98,13 @@ What is left:
 - Do not use destructive git commands or delete user work. This repository may already have uncommitted changes.
 
 ## MCP Policy
+
+## Code Review Graph Policy
+
+- `code-review-graph` is installed for this repo and configured as a Codex MCP server. For code review, impact analysis, refactors, or broad repo questions, check the graph before reading large file sets.
+- Preferred flow: `code-review-graph status --repo /home/iscjmz/shopify/shopify`, then `code-review-graph update --repo /home/iscjmz/shopify/shopify --skip-flows` if stale, then `code-review-graph detect-changes --repo /home/iscjmz/shopify/shopify --brief` for current changes.
+- Use graph output to choose the smallest relevant files to inspect. Do not treat graph output as a substitute for reading critical code before editing.
+- The graph data under `.code-review-graph/` is local generated state and should not be committed.
 
 - Check current MCP state with `codex mcp list` before adding anything.
 - Use `codex mcp add` or `~/.codex/config.toml` for MCP servers; do not invent project-local MCP config unless Codex docs confirm it is supported.

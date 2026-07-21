@@ -1758,3 +1758,441 @@ Things to capture:
 ### High-Value Confluence Remark
 
 > `fs.local` appears to be an internal DNS/Active Directory namespace. This is a potential cloud-migration dependency because applications, servers, scripts, file shares, certificates, printers, and identity flows may rely on names that only resolve inside the corporate network. A safe first step is a read-only dependency inventory of all `fs.local` references across Auvik, DNS, AWS/Azure networking, GitHub repos, Egnyte docs, and known runbooks.
+
+## Where To Start: AWS, Python, Security, Observability, And IaC
+
+### The Correct Frame
+
+Do not treat this project as only an app project.
+
+Treat it like a practice company environment.
+
+Your focus is:
+
+```text
+AWS + Python/boto3 + security + observability + infrastructure as code
+```
+
+So the job is not to start by building random app features. The job is to learn how to inspect, secure, monitor, and eventually define infrastructure repeatably.
+
+Better framing:
+
+```text
+What exists?
+Is it secure?
+Is it observable?
+Can I inventory it?
+Can I detect risk?
+Can I turn it into repeatable infrastructure?
+```
+
+That is the same kind of thinking needed for Future Standard.
+
+### What This Project Represents
+
+In this project, think of the system like this:
+
+```text
+PokemonTool = product intelligence / internal business app
+Odoo = storefront, ERP, inventory, orders, CRM, business workflow
+Postgres = source of truth / persistent data
+Redis/RabbitMQ = runtime dependencies
+Docker Compose = current local infrastructure
+AWS = future hosting, discovery, security, and inventory practice layer
+GitHub Actions = CI/CD and deployment safety
+Python scripts = infrastructure automation tools
+Terraform/IaC = repeatable cloud infrastructure definition
+```
+
+At Future Standard, the equivalent could be:
+
+```text
+Business application
+Database
+Queues/caches
+Internal network
+Cloud account
+Monitoring
+GitHub repos
+CI/CD
+Runbooks
+Security controls
+```
+
+So this repo is a lab for building the same patterns safely.
+
+### Start With Inventory Automation
+
+Start with inventory before Terraform, dashboards, migration, or advanced automation.
+
+Reason:
+
+> Infrastructure people need to know what exists before they suggest changes.
+
+First coding project:
+
+```text
+infra/scripts/local/compose_inventory.py
+```
+
+Purpose:
+
+```text
+Generate a Markdown/JSON report of the project infrastructure from local repo files.
+```
+
+Read these files first:
+
+```text
+docker-compose.yml
+docker-compose.odoo.yml
+Pokemon/docker-compose.yml
+Pokemon/docker-compose.prod.yml
+Pokemon/docker-compose.local-no-postgres-port.yml
+.github/workflows/ci.yml
+odoo/config/odoo.conf
+odoo/.env.example
+```
+
+Report these fields:
+
+| Field | Meaning |
+|---|---|
+| Service | Service/container name |
+| Runtime | Docker image or build context |
+| Ports | Host/container port mappings |
+| Expose | Internal-only Docker ports |
+| Depends on | Service dependencies |
+| Volumes | Persistent data or mounted config/code |
+| Networks | Docker networks used |
+| Healthcheck | Whether a healthcheck exists |
+| Env vars | Required or default configuration |
+| Risk notes | Public ports, defaults, missing healthchecks, missing owner |
+
+Example output:
+
+```text
+Service: odoo
+Runtime: Docker image odoo:19.0
+Ports: 127.0.0.1:8069 -> 8069
+Depends on: odoo-db
+Data: odoo_data volume
+Healthcheck: not obvious on odoo service
+Risk: dev password defaults, no public exposure, needs backup/restore plan
+```
+
+This teaches the most important infra skill:
+
+> Turn messy systems into structured understanding.
+
+### Then Add AWS/boto3 Inventory
+
+After local inventory, build the cloud version:
+
+```text
+infra/scripts/aws/aws_inventory_report.py
+```
+
+Use boto3 in read-only mode.
+
+Start with:
+
+```text
+STS caller identity
+EC2 instances
+RDS instances
+S3 buckets
+VPCs
+subnets
+route tables
+security groups
+CloudWatch log groups
+IAM roles
+resource tags
+```
+
+Output:
+
+```text
+Account
+Region
+Resource type
+Name
+ID
+Public/private status
+Tags
+Risk notes
+Questions
+```
+
+Future Standard equivalent:
+
+> I can safely inventory AWS resources and produce a readable report without changing anything.
+
+That is useful real infrastructure work.
+
+### Then Build Security Audits
+
+Once you can inventory, add security checks.
+
+Local security script:
+
+```text
+infra/scripts/local/docker_security_audit.py
+```
+
+Check:
+
+```text
+ports bound to 0.0.0.0
+ports exposed to localhost only
+services with no healthcheck
+default passwords
+missing .env.example coverage
+secrets hardcoded in compose/config files
+persistent volumes with no backup note
+containers likely running as root
+admin UIs exposed locally
+```
+
+AWS security script:
+
+```text
+infra/scripts/aws/aws_security_audit.py
+```
+
+Check:
+
+```text
+security groups open to 0.0.0.0/0
+public EC2 IPs
+public RDS instances
+S3 public access settings
+IAM admin policies
+CloudWatch log retention missing
+unencrypted volumes/snapshots
+untagged resources
+internet gateways and public subnets
+```
+
+Security intuition questions:
+
+```text
+What is exposed?
+Who can access it?
+Is it encrypted?
+Is it monitored?
+Is it tagged and owned?
+Is the default config still present?
+```
+
+### Then Build Observability Audits
+
+After security, inspect observability.
+
+Local observability script:
+
+```text
+infra/scripts/local/observability_inventory.py
+```
+
+Check:
+
+```text
+healthchecks in compose
+Prometheus config
+Grafana presence
+Loki/Promtail config
+log files or stdout logging
+service dashboards
+alert rules
+critical services without healthchecks
+```
+
+AWS observability script:
+
+```text
+infra/scripts/aws/aws_observability_audit.py
+```
+
+Check:
+
+```text
+CloudWatch log groups
+log retention days
+CloudWatch alarms
+dashboards
+RDS monitoring
+EC2 status checks
+load balancer logs
+missing metrics/alerts
+```
+
+Future Standard equivalent:
+
+> I can tell which systems have logs/alerts and which systems are blind spots.
+
+### Then Start Infrastructure As Code
+
+Do not start with a huge migration.
+
+Start with a small Terraform lab:
+
+```text
+infra/terraform/aws_odoo_sandbox/
+```
+
+First Terraform target:
+
+```text
+VPC
+public subnet
+private subnet
+route tables
+security groups
+CloudWatch log group
+tags
+placeholder EC2 or ECS target
+placeholder RDS design note
+```
+
+Goal:
+
+```text
+Can I describe infrastructure repeatably?
+Can I tag it?
+Can I secure it?
+Can I explain the network?
+Can I destroy/recreate it safely?
+```
+
+Do not try to deploy the full app on day one.
+
+### Actual Roadmap
+
+Follow this order:
+
+1. Local compose inventory script
+2. Local security audit script
+3. Local observability audit script
+4. AWS boto3 identity and inventory script
+5. AWS security audit script
+6. AWS observability audit script
+7. Terraform mini-lab for AWS network/security baseline
+8. Runbook generator from findings
+
+This sequence builds intuition in the right order:
+
+```text
+Inventory -> Security -> Observability -> IaC -> Runbooks
+```
+
+### How To Think Before Coding Any Infra Tool
+
+Before writing a script, answer:
+
+```text
+Question:
+What am I trying to answer?
+
+Source:
+Where does the truth live?
+
+Read-only method:
+How can I inspect it safely?
+
+Output:
+Should this be JSON, Markdown, or a table?
+
+Risk:
+What would a manager or infra team care about?
+
+Next action:
+What should someone do with this information?
+```
+
+Example 1:
+
+```text
+Question: Which services expose ports?
+Source: docker-compose files
+Read-only method: parse YAML
+Output: Markdown table
+Risk: public DB/admin ports
+Next action: bind to 127.0.0.1 or make internal-only
+```
+
+Example 2:
+
+```text
+Question: Which AWS account am I using?
+Source: AWS STS
+Read-only method: boto3 get_caller_identity
+Output: account, ARN, user ID, profile, region
+Risk: running scripts in the wrong account
+Next action: confirm account/role before inventory or audit
+```
+
+Example 3:
+
+```text
+Question: Which services lack healthchecks?
+Source: docker-compose files
+Read-only method: parse service healthcheck blocks
+Output: service, has_healthcheck, dependency criticality, recommendation
+Risk: failures are not detected early
+Next action: add healthcheck or monitor externally
+```
+
+### First Thing To Code Yourself
+
+Start here:
+
+```text
+infra/scripts/local/compose_inventory.py
+```
+
+Requirements:
+
+```text
+Reads docker-compose.yml, docker-compose.odoo.yml, and Pokemon/docker-compose.yml
+Parses YAML safely
+Outputs Markdown by default
+Optionally outputs JSON
+Lists service, image/build, ports, expose, depends_on, volumes, healthcheck, networks
+Adds simple risk notes
+Does not modify files or call external services
+Fails clearly if a file is missing or invalid
+```
+
+This one script connects:
+
+```text
+Python
+infrastructure inventory
+security thinking
+observability thinking
+Future Standard-style repo analysis
+```
+
+After that, build the boto3 AWS inventory version.
+
+### Personal Standard
+
+Use this standard:
+
+```text
+Inventory before opinion.
+Evidence before proposal.
+Read-only before change.
+Small improvement before big migration.
+Healthcheck before claiming uptime.
+Restore test before claiming backups.
+Owner map before asking for broad access.
+Security/observability before production exposure.
+IaC after understanding the existing runtime.
+```
+
+Main mental shift:
+
+> Do not ask, "What app feature can I build?" Ask, "What operational risk can I reduce, what unknown can I turn into an inventory, what manual process can I automate, and what failure can I detect earlier?"

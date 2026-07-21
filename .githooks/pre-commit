@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# This hook blocks large staged files before they enter Git history.
+# Blocks large staged files and refreshes code-review-graph context before commit.
 set -euo pipefail
 
-# Run from the repository root no matter where the commit command starts.
 cd "$(git rev-parse --show-toplevel)"
 
-# Delegate the actual size logic to the tracked script so it is reviewable.
+# Keep accidental large files out of Git history.
 scripts/check-large-files.sh --staged
+
+# Keep the local review graph fresh. Do not block commits if graph tooling fails.
+if command -v code-review-graph >/dev/null 2>&1; then
+    code-review-graph update || true
+    code-review-graph detect-changes --brief || true
+fi
