@@ -10,7 +10,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import asdict
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 from access_analyzer_common import (
     DEFAULT_REGION,
@@ -24,7 +30,7 @@ from access_analyzer_common import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="List IAM Access Analyzer analyzers safely.")
-    parser.add_argument("--profile", help="AWS CLI/SSO profile name.")
+    parser.add_argument("--profile", help="Optional AWS named profile. Omit this when using pasted AWS env tokens.")
     parser.add_argument("--region", default=DEFAULT_REGION, help="AWS region. Default: us-east-1.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     return parser.parse_args()

@@ -36,25 +36,65 @@ Does the selected analyzer name/ARN match the dashboard I am reporting from?
 - `access_analyzer_common.py` - shared boto3/session/analyzer/report helpers.
 - `run_access_analyzer_reports.sh` - wrapper once analyzer names are known.
 
+
+## Credentials: Simple Env Token Flow
+
+If you paste temporary AWS credentials into your terminal, do **not** pass `--profile`.
+Boto3 will automatically read these environment variables:
+
+```bash
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_SESSION_TOKEN=...
+export AWS_DEFAULT_REGION=us-east-1
+```
+
+Then run scripts like this:
+
+```bash
+python3 infra/scripts/futurestandard/00_discover_analyzers.py --region us-east-1
+```
+
+The `--profile` option is only for AWS CLI/SSO named profiles. It is optional.
+Do not paste real keys into code, README files, Git, or chat. Paste them only into your terminal session.
+
 ## Recommended Workflow
 
-1. Discover analyzers.
+1. Paste your temporary AWS credentials into the terminal first.
 
 ```bash
-python3 infra/scripts/futurestandard/00_discover_analyzers.py   --profile future-standard-readonly   --region us-east-1
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_SESSION_TOKEN=...
+export AWS_DEFAULT_REGION=us-east-1
 ```
 
-2. Pick the resource/external analyzer by exact name or ARN.
+2. Discover analyzers.
 
 ```bash
-python3 infra/scripts/futurestandard/01_external_access_report.py   --profile future-standard-readonly   --region us-east-1   --analyzer-name "ConsoleAnalyzer-EXACT-NAME"   --yes
+python3 infra/scripts/futurestandard/00_discover_analyzers.py \
+  --region us-east-1
 ```
 
-3. Pick the unused-access analyzer by exact name or ARN.
+3. Pick the resource/external analyzer by exact name or ARN.
 
 ```bash
-python3 infra/scripts/futurestandard/02_unused_access_report.py   --profile future-standard-readonly   --region us-east-1   --analyzer-name "UnusedAccess-ConsoleAnalyzer-EXACT-NAME"   --yes
+python3 infra/scripts/futurestandard/01_external_access_report.py \
+  --region us-east-1 \
+  --analyzer-name "ConsoleAnalyzer-EXACT-NAME" \
+  --yes
 ```
+
+4. Pick the unused-access analyzer by exact name or ARN.
+
+```bash
+python3 infra/scripts/futurestandard/02_unused_access_report.py \
+  --region us-east-1 \
+  --analyzer-name "UnusedAccess-ConsoleAnalyzer-EXACT-NAME" \
+  --yes
+```
+
+If your company gives you a named AWS CLI/SSO profile later, then add `--profile PROFILE_NAME`. For your current token-paste workflow, omit it.
 
 ## Report Outputs
 

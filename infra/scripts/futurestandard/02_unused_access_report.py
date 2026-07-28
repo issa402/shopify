@@ -10,10 +10,15 @@ returns them.
 from __future__ import annotations
 
 import argparse
+import sys
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 from access_analyzer_common import (
     DEFAULT_OUTPUT_DIR,
@@ -62,7 +67,7 @@ class UnusedFinding:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Report unused IAM access findings.")
-    parser.add_argument("--profile", help="AWS CLI/SSO profile name.")
+    parser.add_argument("--profile", help="Optional AWS named profile. Omit this when using pasted AWS env tokens.")
     parser.add_argument("--region", default=DEFAULT_REGION)
     parser.add_argument("--analyzer-name", help="Exact UnusedAccess analyzer name.")
     parser.add_argument("--analyzer-arn", help="Exact UnusedAccess analyzer ARN.")
