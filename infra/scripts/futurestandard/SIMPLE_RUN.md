@@ -59,3 +59,13 @@ Only use deep detail mode for smaller runs:
 ```bash
 ACCESS_ANALYZER_FETCH_DETAILS=1 python3 infra/scripts/futurestandard/quick_access_analyzer_report.py
 ```
+
+## Main Report
+
+After the script runs, open this first:
+
+```text
+infra/reports/futurestandard/access-analyzer/ACCESS_ANALYZER_REPORT.md
+```
+
+That Markdown file explains every CSV, what each one is for, what to inspect first, and the plan for turning findings into approved remediation work.
