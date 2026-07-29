@@ -43,9 +43,19 @@ Unused access:
 - `unused_top_accounts.csv`
 - `unused_top_finding_types.csv`
 - `unused_group_by_account_and_finding_type.csv`
-- `unused_must_flag_never_used_over_5_months.csv`
-- `unused_permissions_must_flag_130_days_or_never.csv`
+- `unused_candidates_over_5_months.csv`
+- `unused_permissions_candidates.csv`
 
 ## Future Remediation Use
 
 Yes, these CSVs are meant to feed a future approval/remediation workflow. Start with the `must_flag` CSVs, get manager/account-owner approval, then a later script can disable keys, reduce policies, or delete unused roles. Do not remediate directly from this export script.
+
+## If The Script Looked Frozen
+
+If it prints `External/resource findings: ...` and then seems stuck, the old version was doing one `get_finding_v2` call for every unused finding. With thousands of unused findings, that is slow. The current version skips those detail calls by default and should finish much faster.
+
+Only use deep detail mode for smaller runs:
+
+```bash
+ACCESS_ANALYZER_FETCH_DETAILS=1 python3 infra/scripts/futurestandard/quick_access_analyzer_report.py
+```

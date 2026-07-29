@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,7 @@ REGION = "us-east-1"
 OUT_DIR = Path("infra/reports/futurestandard/access-analyzer")
 NEVER_USED_OLD_DAYS = 150
 UNUSED_PERMISSION_FLAG_DAYS = 130
+FETCH_DETAILS = os.getenv("ACCESS_ANALYZER_FETCH_DETAILS") == "1"
 
 
 def write_csv(path, rows, headers):
@@ -108,10 +110,12 @@ def criticality(finding_type, age_days, days_unused, last_used):
     """Simple criticality for unused access cleanup candidates."""
     never_used = not last_used
     old_enough = isinstance(age_days, int) and age_days >= NEVER_USED_OLD_DAYS
-    if never_used and old_enough:
+    if FETCH_DETAILS and never_used and old_enough:
         return "MUST_FLAG_NEVER_USED_OVER_5_MONTHS"
     if finding_type == "UnusedPermission" and (days_unused == "" or days_unused >= UNUSED_PERMISSION_FLAG_DAYS):
-        return "MUST_FLAG_UNUSED_PERMISSION_130_DAYS_OR_NEVER"
+        return "MUST_FLAG_UNUSED_PERMISSION_REVIEW"
+    if old_enough:
+        return "REVIEW_UNUSED_FINDING_OVER_5_MONTHS"
     if isinstance(days_unused, int) and days_unused >= 180:
         return "HIGH_180_DAYS_UNUSED"
     if isinstance(days_unused, int) and days_unused >= 90:
@@ -190,10 +194,11 @@ def export_unused_findings(aa, analyzer):
     ):
         for f in page.get("findings", []):
             detail = {}
-            try:
-                detail = aa.get_finding_v2(analyzerArn=analyzer["arn"], id=f.get("id", ""))
-            except Exception as error:
-                detail = {"detail_error": str(error)}
+            if FETCH_DETAILS:
+                try:
+                    detail = aa.get_finding_v2(analyzerArn=analyzer["arn"], id=f.get("id", ""))
+                except Exception as error:
+                    detail = {"detail_error": str(error)}
 
             last_used = deep_find_first(detail, {"lastAccessed", "lastAccessedTime", "lastUsed", "lastUsedDate", "lastUsedAt"})
             access_key_id = deep_find_first(detail, {"accessKeyId", "accessKey"}) or ""
@@ -229,13 +234,15 @@ def export_unused_findings(aa, analyzer):
     write_csv(OUT_DIR / "unused_roles.csv", [r for r in rows if r["finding_type"] == "UnusedIAMRole"], headers)
     write_csv(OUT_DIR / "unused_access_keys.csv", [r for r in rows if r["finding_type"] == "UnusedIAMUserAccessKey"], headers)
     write_csv(OUT_DIR / "unused_permissions.csv", [r for r in rows if r["finding_type"] == "UnusedPermission"], headers)
-    write_csv(OUT_DIR / "unused_must_flag_never_used_over_5_months.csv", [r for r in rows if r["criticality"] == "MUST_FLAG_NEVER_USED_OVER_5_MONTHS"], headers)
-    write_csv(OUT_DIR / "unused_permissions_must_flag_130_days_or_never.csv", [r for r in rows if r["criticality"] == "MUST_FLAG_UNUSED_PERMISSION_130_DAYS_OR_NEVER"], headers)
+    write_csv(OUT_DIR / "unused_candidates_over_5_months.csv", [r for r in rows if r["criticality"] in {"MUST_FLAG_NEVER_USED_OVER_5_MONTHS", "REVIEW_UNUSED_FINDING_OVER_5_MONTHS"}], headers)
+    write_csv(OUT_DIR / "unused_permissions_candidates.csv", [r for r in rows if r["finding_type"] == "UnusedPermission"], headers)
     counter_csv(OUT_DIR / "unused_top_accounts.csv", Counter(r["account"] for r in rows), "account")
     counter_csv(OUT_DIR / "unused_top_finding_types.csv", Counter(r["finding_type"] for r in rows), "finding_type")
     grouped_counter_csv(OUT_DIR / "unused_group_by_account_and_finding_type.csv", rows, ["account", "finding_type"])
 
     print(f"Unused access findings: {len(rows)}")
+    if not FETCH_DETAILS:
+        print("Skipped slow per-finding get_finding_v2 detail calls. Set ACCESS_ANALYZER_FETCH_DETAILS=1 only for smaller/deep runs.")
 
 
 def main():
