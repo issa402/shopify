@@ -79,6 +79,21 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 
+def _cors_origins() -> list[str]:
+    """
+    Build a safe CORS origin list from FRONTEND_URL.
+
+    The browser rejects wildcard origins when credentials are enabled, so the
+    default stays explicit for local development and production can pass a
+    comma-separated allowlist like "https://app.example.com,https://admin.example.com".
+    """
+    configured = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    # Split comma-separated origins and trim whitespace from each entry.
+    origins = [origin.strip() for origin in configured.split(",") if origin.strip()]
+    # Always return at least one local origin so development works without env setup.
+    return origins or ["http://localhost:3000"]
+
+
 # ── Import all route handlers (routers) ───────────────────────────────────────
 # WHAT ARE ROUTERS?
 # FastAPI lets you break routes into separate files using APIRouter.
@@ -271,7 +286,7 @@ app = FastAPI(
 # allow_credentials: True means cookies and Authorization headers are allowed.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_URL", "*")],
+    allow_origins=_cors_origins(),
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Internal-Secret"],
     allow_credentials=True,  # allow cookies and auth headers cross-origin

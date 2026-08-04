@@ -1,0 +1,45 @@
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:55434:5432"
+
+  redis:
+    ports: !override
+      - "127.0.0.1:6380:6379"
+
+  web:
+    ports: !override
+      - "127.0.0.1:3000:3000"
+
+  gateway:
+    ports: !override
+      - "127.0.0.1:8080:8080"
+
+  ai:
+    ports: !override
+      - "127.0.0.1:8000:8000"
+
+  qdrant:
+    ports: !override
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+
+  zookeeper:
+    ports: !override
+      - "127.0.0.1:2181:2181"
+
+  kafka:
+    ports: !override
+      - "127.0.0.1:9092:9092"
+
+  ollama:
+    ports: !override
+      - "127.0.0.1:11434:11434"
+
+  temporal:
+    ports: !override
+      - "127.0.0.1:7233:7233"
+
+  temporal-ui:
+    ports: !override
+      - "127.0.0.1:8088:8080"

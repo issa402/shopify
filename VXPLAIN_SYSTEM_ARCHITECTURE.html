@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vxplain: Shopify Workspace System Architecture</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #182235;
+      --ink: #e5e7eb;
+      --muted: #a8b3c7;
+      --line: #314158;
+      --accent: #22c55e;
+      --accent-2: #38bdf8;
+      --warn: #f59e0b;
+      --risk: #fb7185;
+      --code: #07111f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    header {
+      padding: 28px 28px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #101827;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    h1 { font-size: clamp(28px, 4vw, 46px); letter-spacing: 0; }
+    h2 { font-size: 24px; margin-bottom: 14px; }
+    h3 { font-size: 17px; color: #f8fafc; margin-bottom: 8px; }
+
+    p { margin: 8px 0; color: var(--muted); }
+    code { background: #0b1220; color: #dbeafe; padding: 2px 5px; border-radius: 4px; }
+    a { color: #7dd3fc; }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      min-height: calc(100vh - 112px);
+    }
+
+    nav {
+      border-right: 1px solid var(--line);
+      padding: 18px;
+      position: sticky;
+      top: 111px;
+      height: calc(100vh - 111px);
+      overflow: auto;
+      background: #0d1424;
+    }
+
+    nav a {
+      display: block;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    nav a:hover, nav a.active { background: var(--panel-2); color: #fff; }
+
+    main { padding: 24px; max-width: 1400px; width: 100%; }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      margin-bottom: 18px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .service, .note {
+      background: #0b1220;
+      border: 1px solid #27364c;
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .service strong { color: #f8fafc; }
+    .service small, .note small { color: var(--muted); display: block; margin-top: 6px; }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border: 1px solid #3b4d66;
+      color: #c7d2fe;
+      border-radius: 999px;
+      padding: 2px 8px;
+      margin: 3px 4px 3px 0;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .tag.green { color: #bbf7d0; border-color: #166534; }
+    .tag.sky { color: #bae6fd; border-color: #0369a1; }
+    .tag.warn { color: #fed7aa; border-color: #b45309; }
+    .tag.risk { color: #fecdd3; border-color: #be123c; }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 14px;
+    }
+
+    input, select, button {
+      background: #0b1220;
+      border: 1px solid #334155;
+      color: var(--ink);
+      min-height: 38px;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font: inherit;
+    }
+
+    button { cursor: pointer; }
+    button:hover { border-color: var(--accent-2); color: #fff; }
+    input { min-width: min(420px, 100%); flex: 1; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 10px;
+      border-bottom: 1px solid #29374d;
+    }
+
+    th { color: #fff; background: #0b1220; position: sticky; top: 0; }
+    td { color: var(--muted); }
+
+    .diagram-wrap {
+      background: #f8fafc;
+      color: #0f172a;
+      border-radius: 8px;
+      overflow: auto;
+      padding: 14px;
+      border: 1px solid #334155;
+      margin-top: 12px;
+    }
+
+    .mermaid { min-width: 760px; }
+
+    details {
+      border: 1px solid #29374d;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #0b1220;
+      margin-top: 10px;
+    }
+
+    summary { cursor: pointer; color: #e2e8f0; font-weight: 700; }
+
+    pre {
+      background: var(--code);
+      color: #cbd5e1;
+      padding: 12px;
+      border-radius: 8px;
+      overflow: auto;
+      border: 1px solid #26364e;
+    }
+
+    .cols {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .muted { color: var(--muted); }
+    .good { color: var(--accent); }
+    .warn-text { color: var(--warn); }
+    .risk-text { color: var(--risk); }
+
+    @media (max-width: 920px) {
+      header { position: static; }
+      .shell { grid-template-columns: 1fr; }
+      nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      .cols { grid-template-columns: 1fr; }
+      main { padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Vxplain System Architecture</h1>
+    <p>Workspace scan for <code>/home/iscjmz/shopify/shopify</code>. Generated from local files on 2026-04-30.</p>
+    <div class="toolbar">
+      <input id="search" placeholder="Search services, folders, routes, dependencies..." />
+      <select id="diagramSelect" aria-label="Diagram">
+        <option value="system">Whole System</option>
+        <option value="nexus">NexusOS Runtime</option>
+        <option value="pokemon">PokemonTool Runtime</option>
+        <option value="events">Event Flow</option>
+        <option value="data">Data/Storage</option>
+        <option value="folders">Folder Map</option>
+      </select>
+      <button id="copyDiagram">Copy Mermaid</button>
+      <button id="openLive">Open Mermaid Live</button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <nav>
+      <a href="#summary">System Summary</a>
+      <a href="#diagram">Live Mermaid Diagram</a>
+      <a href="#services">Every Service</a>
+      <a href="#routes">Main Routes</a>
+      <a href="#folders">Folder Inventory</a>
+      <a href="#dependencies">Dependencies</a>
+      <a href="#infra">Infra Layer</a>
+      <a href="#risks">Risks / Gaps</a>
+      <a href="#needed">What I Need From You</a>
+    </nav>
+
+    <main>
+      <section id="summary" data-search>
+        <h2>System Summary</h2>
+        <div class="grid">
+          <div class="note">
+            <h3>NexusOS</h3>
+            <p>Main Shopify AI ops system. It has a Go gateway, Python AI service, React merchant dashboard, Postgres/Redis/Kafka/Qdrant/Ollama/Temporal infra, and MCP tool config.</p>
+            <span class="tag green">runtime app</span><span class="tag sky">Shopify</span><span class="tag">AI agents</span>
+          </div>
+          <div class="note">
+            <h3>PokemonTool / Pokevend</h3>
+            <p>Separate card-market intelligence stack under <code>Pokemon/</code>. It has its own Go API, React dashboard, Postgres, Redis, RabbitMQ, ingestion services, analytics jobs, scraper, Grafana/Loki/Prometheus stack.</p>
+            <span class="tag green">runtime app</span><span class="tag sky">TCG market data</span><span class="tag">subsystem</span>
+          </div>
+          <div class="note">
+            <h3>Infra Curriculum</h3>
+            <p><code>infra/</code> and <code>future_standard_mastery/</code> are training/reference areas. They include scripts and lessons, but they are not part of the live product runtime.</p>
+            <span class="tag warn">learning lab</span><span class="tag">scripts</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="diagram">
+        <h2>Live Mermaid Diagram</h2>
+        <p>Select a diagram above. The source is embedded in this file, and the Mermaid Live button opens the current diagram in mermaid.live.</p>
+        <div class="diagram-wrap">
+          <div id="diagramTarget" class="mermaid"></div>
+        </div>
+        <details>
+          <summary>Current Mermaid source</summary>
+          <pre id="diagramSource"></pre>
+        </details>
+      </section>
+
+      <section id="services" data-search>
+        <h2>Every Service</h2>
+        <div class="grid">
+          <div class="service">
+            <h3>NexusOS Web Dashboard</h3>
+            <p><strong>Path:</strong> <code>apps/web/</code></p>
+            <p>React + Vite + Shopify Polaris merchant UI. Pages include dashboard, approvals, workflows, agent logs, and settings.</p>
+            <small>Port: 3000 in package script. Current README says many views are mock-data first and still need live gateway fetch wiring.</small>
+            <span class="tag sky">React</span><span class="tag">Vite</span><span class="tag">Polaris</span>
+          </div>
+          <div class="service">
+            <h3>NexusOS Go Gateway</h3>
+            <p><strong>Path:</strong> <code>services/gateway/</code></p>
+            <p>Gin API gateway for Shopify OAuth, webhook ingestion, authenticated merchant API, A2A negotiation, MCP hub, Kafka publish, Postgres migrations, and graceful shutdown.</p>
+            <small>Port: <code>PORT_GATEWAY</code> or 8080. Entrypoint: <code>main.go</code>.</small>
+            <span class="tag sky">Go</span><span class="tag">Gin</span><span class="tag">Kafka</span><span class="tag">Postgres</span>
+          </div>
+          <div class="service">
+            <h3>NexusOS AI Service</h3>
+            <p><strong>Path:</strong> <code>services/ai/</code></p>
+            <p>FastAPI service for fraud scoring, chargeback response drafting, cart recovery, SEO generation, negotiation, inventory forecasting, marketing segmentation, and agent actions.</p>
+            <small>Port: <code>PORT_AI</code> or 8000. Starts Qdrant collection and optional Kafka consumer.</small>
+            <span class="tag sky">FastAPI</span><span class="tag">CrewAI</span><span class="tag">Qdrant</span><span class="tag">Ollama/LLMs</span>
+          </div>
+          <div class="service">
+            <h3>PokemonTool Client</h3>
+            <p><strong>Path:</strong> <code>Pokemon/client/</code></p>
+            <p>React + Vite dashboard for card inventory, watchlists, trends, alerts, shows, settings, and login. Production image serves via Nginx.</p>
+            <small>Compose maps container Nginx to host port 5173.</small>
+            <span class="tag sky">React</span><span class="tag">Redux Toolkit</span><span class="tag">Nginx</span>
+          </div>
+          <div class="service">
+            <h3>PokemonTool Go API</h3>
+            <p><strong>Path:</strong> <code>Pokemon/server/</code></p>
+            <p>Chi API server. Wires config, Postgres, Redis, optional RabbitMQ, stores, services, handlers, SSE manager, notification worker, routes, auth, rate limiting, and CORS.</p>
+            <small>Port: <code>PORT</code> or 3001. Main frontend API for PokemonTool.</small>
+            <span class="tag sky">Go</span><span class="tag">chi</span><span class="tag">SSE</span><span class="tag">JWT</span>
+          </div>
+          <div class="service">
+            <h3>Pokemon API Consumer</h3>
+            <p><strong>Path:</strong> <code>Pokemon/services/api-consumer/</code></p>
+            <p>FastAPI background scanner. Pulls watchlist names from the Go API, scans eBay and TCGdex/TCGplayer-style data, normalizes listings, and publishes to RabbitMQ.</p>
+            <small>Port: 8001 when run directly or in prod compose. Health endpoint checks RabbitMQ channel.</small>
+            <span class="tag sky">FastAPI</span><span class="tag">httpx</span><span class="tag">RabbitMQ publisher</span>
+          </div>
+          <div class="service">
+            <h3>Pokemon Analytics Engine</h3>
+            <p><strong>Path:</strong> <code>Pokemon/services/analytics-engine/</code></p>
+            <p>Scheduled batch service. Computes card trends, finds deals of the day, reads/writes Postgres through repository classes, and feeds dashboard data consumed by the Go API.</p>
+            <small>No HTTP server. Runs an infinite schedule loop.</small>
+            <span class="tag sky">Python</span><span class="tag">schedule</span><span class="tag">psycopg2</span><span class="tag">scikit-learn</span>
+          </div>
+          <div class="service">
+            <h3>Pokemon Scraping Service</h3>
+            <p><strong>Path:</strong> <code>Pokemon/services/scraping-service/</code></p>
+            <p>Go Playwright scraper for Facebook Marketplace and Mercari. Publishes scraped listings into RabbitMQ for downstream processing.</p>
+            <small>Uses Playwright browser automation and AMQP publisher.</small>
+            <span class="tag sky">Go</span><span class="tag">Playwright</span><span class="tag">RabbitMQ</span>
+          </div>
+          <div class="service">
+            <h3>MCP Tool Servers</h3>
+            <p><strong>Path:</strong> <code>mcp-config.json</code></p>
+            <p>Configured tool servers for Slack, Google Drive, Postgres, and local filesystem access. Gateway initializes an MCP hub from this config.</p>
+            <small>Requires env vars like Slack token, Google Drive credentials, and DATABASE_URL.</small>
+            <span class="tag">MCP</span><span class="tag">npx</span><span class="tag warn">external creds</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="routes" data-search>
+        <h2>Main Routes</h2>
+        <div class="cols">
+          <div>
+            <h3>NexusOS Gateway</h3>
+            <table>
+              <thead><tr><th>Route</th><th>Purpose</th></tr></thead>
+              <tbody>
+                <tr><td><code>GET /health</code></td><td>Gateway health/version/time.</td></tr>
+                <tr><td><code>GET /auth/shopify</code>, <code>/auth/callback</code></td><td>Shopify OAuth start and callback.</td></tr>
+                <tr><td><code>POST /webhooks/shopify/*</code></td><td>Orders, products, inventory, customers, refunds webhooks. HMAC verify then Kafka publish.</td></tr>
+                <tr><td><code>POST /api/v1/agent/negotiate</code></td><td>Authenticated A2A commerce negotiation.</td></tr>
+                <tr><td><code>GET /api/v1/orders</code>, <code>/customers</code>, <code>/approvals/pending</code></td><td>Authenticated merchant endpoints, currently mostly shell responses.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <h3>NexusOS AI</h3>
+            <table>
+              <thead><tr><th>Route</th><th>Purpose</th></tr></thead>
+              <tbody>
+                <tr><td><code>GET /health</code></td><td>Dependency health view.</td></tr>
+                <tr><td><code>POST /agents/*</code></td><td>Support, logistics disruption, agent status flows.</td></tr>
+                <tr><td><code>POST /fraud/score</code>, <code>/fraud/dispute/respond</code></td><td>Fraud scoring and chargeback response.</td></tr>
+                <tr><td><code>POST /cart-recovery/generate-email</code></td><td>AI abandoned cart email.</td></tr>
+                <tr><td><code>POST /seo/generate</code>, <code>/seo/bulk-generate</code></td><td>Single/bulk SEO content.</td></tr>
+                <tr><td><code>POST /inventory/*</code>, <code>/marketing/*</code>, <code>/negotiate/*</code></td><td>Forecasting, PO draft, segmentation, A2A contracts.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <h3 style="margin-top: 16px;">PokemonTool API</h3>
+        <table>
+          <thead><tr><th>Route</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /health</code>, <code>/api/health/freshness</code>, <code>/metrics</code></td><td>Health, freshness, Prometheus-style metrics.</td></tr>
+            <tr><td><code>POST /api/auth/register</code>, <code>/api/auth/login</code></td><td>Public auth routes.</td></tr>
+            <tr><td><code>GET /api/internal/watchlist-names</code></td><td>Internal endpoint used by api-consumer to know what cards to scan.</td></tr>
+            <tr><td><code>GET /api/stream?token=...</code></td><td>SSE stream for alerts.</td></tr>
+            <tr><td><code>/api/cards/*</code>, <code>/api/alerts/*</code>, <code>/api/watchlist</code>, <code>/api/inventory</code></td><td>Protected card/search/alert/watchlist/inventory features.</td></tr>
+            <tr><td><code>/api/deals/today</code>, <code>/api/shows/upcoming</code>, <code>/api/apikeys</code></td><td>Protected deals, event shows, encrypted API key management.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="folders" data-search>
+        <h2>Folder Inventory</h2>
+        <table>
+          <thead><tr><th>Folder</th><th>Role</th><th>Runtime?</th></tr></thead>
+          <tbody>
+            <tr><td><code>apps/web</code></td><td>NexusOS React merchant dashboard.</td><td>Yes</td></tr>
+            <tr><td><code>services/gateway</code></td><td>NexusOS Go API gateway and DB migrations.</td><td>Yes</td></tr>
+            <tr><td><code>services/ai</code></td><td>NexusOS Python AI/FastAPI service, agents, routers, RAG, consumers.</td><td>Yes</td></tr>
+            <tr><td><code>schemas</code></td><td>A2A commerce JSON schema.</td><td>Support</td></tr>
+            <tr><td><code>config/temporal</code></td><td>Temporal dynamic config mounted into Docker service.</td><td>Infra</td></tr>
+            <tr><td><code>Pokemon/client</code></td><td>PokemonTool React frontend.</td><td>Yes</td></tr>
+            <tr><td><code>Pokemon/server</code></td><td>PokemonTool Go API, handlers, services, stores, middleware, worker.</td><td>Yes</td></tr>
+            <tr><td><code>Pokemon/services/api-consumer</code></td><td>eBay/TCG ingestion service and RabbitMQ publisher.</td><td>Yes</td></tr>
+            <tr><td><code>Pokemon/services/analytics-engine</code></td><td>Scheduled analytics and deal/trend calculation.</td><td>Yes</td></tr>
+            <tr><td><code>Pokemon/services/scraping-service</code></td><td>Playwright scraping service for Facebook/Mercari.</td><td>Yes</td></tr>
+            <tr><td><code>Pokemon/database</code></td><td>PokemonTool Postgres migrations and seed data.</td><td>Data</td></tr>
+            <tr><td><code>Pokemon/scripts</code></td><td>Smoke tests, setup, health checks, reporting, seed scripts, AWS setup.</td><td>Ops</td></tr>
+            <tr><td><code>Pokemon/grafana</code></td><td>Grafana provisioning area.</td><td>Observability</td></tr>
+            <tr><td><code>infra</code></td><td>Hands-on infrastructure learning, scripts, architecture notes.</td><td>No, learning lab</td></tr>
+            <tr><td><code>future_standard_mastery</code></td><td>Long-form learning roadmap by infrastructure domain.</td><td>No, learning lab</td></tr>
+            <tr><td><code>scripts</code></td><td>NexusOS test helper scripts.</td><td>Ops</td></tr>
+            <tr><td><code>.github/workflows</code></td><td>CI/workflow definitions where present.</td><td>CI</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="dependencies" data-search>
+        <h2>Dependencies</h2>
+        <div class="grid">
+          <div class="note"><h3>Go</h3><p>Gin, chi, JWT, pgx, Redis client, kafka-go, OpenTelemetry, RabbitMQ AMQP, Playwright Go.</p></div>
+          <div class="note"><h3>Python</h3><p>FastAPI, uvicorn, Pydantic, CrewAI, LangChain, OpenAI, Anthropic, Qdrant client, aiokafka, asyncpg, Redis, Prophet, scikit-learn, psycopg2, schedule, httpx, aio-pika.</p></div>
+          <div class="note"><h3>Frontend</h3><p>React, Vite, Shopify Polaris, React Router, Recharts, Redux Toolkit, Axios, Chart.js, lucide-react.</p></div>
+          <div class="note"><h3>Infra Images</h3><p>Postgres/pgvector, Redis, Qdrant, Zookeeper, Kafka, Ollama, Temporal, Temporal UI, RabbitMQ, Loki, Promtail, Grafana, Prometheus, Nginx.</p></div>
+        </div>
+      </section>
+
+      <section id="infra" data-search>
+        <h2>Infra Layer</h2>
+        <table>
+          <thead><tr><th>Layer</th><th>NexusOS</th><th>PokemonTool</th></tr></thead>
+          <tbody>
+            <tr><td>Relational DB</td><td>Postgres + pgvector on 5432, migrations from <code>services/gateway/internal/db/migrations</code>.</td><td>Postgres on 5432 locally bound to 127.0.0.1, migrations from <code>database/migrations</code>.</td></tr>
+            <tr><td>Cache</td><td>Redis on 6379 for idempotency/session cache.</td><td>Redis on 6379 for search/trending/deal cache.</td></tr>
+            <tr><td>Event bus</td><td>Kafka + Zookeeper for Shopify event buffering.</td><td>RabbitMQ for listing ingestion/notification pipeline.</td></tr>
+            <tr><td>AI/RAG</td><td>Qdrant, Ollama, OpenAI/Anthropic integrations, CrewAI, LangChain.</td><td>Analytics ML mostly scikit-learn/pandas; no vector DB detected.</td></tr>
+            <tr><td>Workflow</td><td>Temporal and Temporal UI are defined in compose.</td><td>No workflow engine; schedule loop and goroutines.</td></tr>
+            <tr><td>Observability</td><td>OpenTelemetry package in gateway, but no collector service seen in compose.</td><td>Prometheus, Grafana, Loki, Promtail compose services.</td></tr>
+            <tr><td>Production</td><td>Root compose is local infra only; app services are not in root compose.</td><td><code>docker-compose.prod.yml</code> exposes Go API 3001 and api-consumer 8001, hides DB/cache/broker ports.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="risks" data-search>
+        <h2>Risks / Gaps Seen In The Scan</h2>
+        <div class="grid">
+          <div class="note"><h3 class="warn-text">Two Port Collisions</h3><p>Both NexusOS and PokemonTool compose files map Postgres 5432 and Redis 6379 on the host. Running both stacks at once on one machine will conflict unless one stack changes host ports or runs isolated.</p></div>
+          <div class="note"><h3 class="warn-text">NexusOS Compose Missing App Services</h3><p>Root <code>docker-compose.yml</code> defines infra only. Go gateway, AI service, and web dashboard are run separately by Makefile/manual commands.</p></div>
+          <div class="note"><h3 class="warn-text">Gateway Merchant Endpoints Are Shells</h3><p><code>/api/v1/orders</code>, customers, decisions, approvals return empty or simple placeholder responses in <code>services/gateway/main.go</code>.</p></div>
+          <div class="note"><h3 class="risk-text">Pokemon Analytics Typo Bugs</h3><p><code>analytics-engine/repositories/card_repo.py</code> has likely typos in <code>insert_price_point</code>: <code>INSER</code>, <code>avg_prcie</code>, <code>price_tgcplayer</code>, <code>conn.coomit()</code>.</p></div>
+          <div class="note"><h3 class="warn-text">AI Route Doc Drift</h3><p>README says logistics restock and finance margin routes, but current router grep shows <code>/agents/logistics/disruption</code> and <code>/agents/status/{merchant_id}</code>.</p></div>
+          <div class="note"><h3 class="warn-text">External Infra Unknown</h3><p>AWS/security group/DNS/TLS details are described in docs/scripts, but no live Terraform/CloudFormation/Kubernetes manifests were found in this scan.</p></div>
+        </div>
+      </section>
+
+      <section id="needed" data-search>
+        <h2>What I Need From You For The Next, Deeper Version</h2>
+        <p>I can do a stronger “infra truth” pass if you give me or approve access to these runtime facts:</p>
+        <ul>
+          <li>Current <code>.env</code> shape with secrets redacted, especially ports, URLs, DB names, broker URLs, Shopify app settings, and LLM provider settings.</li>
+          <li>Whether both stacks are meant to run together locally, and which host ports you want reserved for each.</li>
+          <li>Any AWS/EC2 details you want modeled: instance type, security groups, EBS volumes, domain, TLS/NGINX, backups, CloudWatch.</li>
+          <li>Whether <code>Pokemon/</code> is truly a submodule or just a nested project in this checkout.</li>
+          <li>Whether you want the next artifact to be a maintained Markdown doc, this interactive HTML, or both.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const diagrams = {
+      system: `flowchart TB
+  User[Merchant Browser] --> NexusWeb[NexusOS React Dashboard\\napps/web :3000]
+  User --> PokeWeb[PokemonTool React Dashboard\\nPokemon/client :5173]
+  Shopify[Shopify Store + Webhooks] --> Gateway[NexusOS Go Gateway\\nGin :8080]
+  BuyerAgent[External Buyer AI Agent] --> Gateway
+  NexusWeb --> Gateway
+  Gateway --> NexusDB[(NexusOS Postgres + pgvector\\n:5432)]
+  Gateway --> NexusRedis[(NexusOS Redis\\n:6379)]
+  Gateway --> Kafka[(Kafka + Zookeeper\\n:9092)]
+  Gateway --> MCP[MCP Hub\\nSlack / GDrive / Postgres / Filesystem]
+  Gateway --> AI[NexusOS AI Service\\nFastAPI :8000]
+  Kafka --> AI
+  AI --> Qdrant[(Qdrant Vector DB\\n:6333)]
+  AI --> Ollama[Ollama Llama3 :11434]
+  AI --> LLMs[OpenAI / Anthropic APIs]
+  AI --> Temporal[Temporal :7233 + UI :8088]
+  AI --> PokeAPI[PokemonTool Go API\\nchi :3001]
+  PokeWeb --> PokeAPI
+  PokeAPI --> PokeDB[(Pokemon Postgres\\n:5432 local)]
+  PokeAPI --> PokeRedis[(Pokemon Redis\\n:6379 local)]
+  PokeAPI --> Rabbit[(RabbitMQ\\n:5672 / UI :15672)]
+  Rabbit --> Worker[Notification Worker\\nGo goroutine]
+  Worker --> PokeAPI
+  APIConsumer[Pokemon API Consumer\\nFastAPI :8001] --> ExternalMarkets[eBay + TCGdex/TCGplayer]
+  APIConsumer --> PokeAPI
+  APIConsumer --> Rabbit
+  Scraper[Scraping Service\\nGo + Playwright] --> Facebook[Facebook Marketplace]
+  Scraper --> Mercari[Mercari]
+  Scraper --> Rabbit
+  Analytics[Analytics Engine\\nPython scheduler] --> PokeDB
+  Analytics --> Deals[Deals + Trends Tables]
+  Deals --> PokeAPI
+  Prometheus[Prometheus :9090] --> PokeAPI
+  Promtail[Promtail] --> Loki[Loki :3100]
+  Grafana[Grafana :3000] --> Prometheus
+  Grafana --> Loki
+  InfraDocs[infra/ + future_standard_mastery/\\ntraining docs/scripts] -.not runtime.-> User`,
+
+      nexus: `flowchart LR
+  Shopify[Shopify OAuth + Webhooks] --> GW[Go Gateway\\nservices/gateway/main.go]
+  GW --> Auth[auth/shopify_oauth.go]
+  GW --> Webhook[webhook/handler.go\\nHMAC verify]
+  Webhook --> Kafka[Kafka Producer\\ninternal/kafka]
+  GW --> API[/api/v1 protected routes\\nJWT + RBAC]
+  API --> A2A[a2a/negotiate.go]
+  GW --> DB[(Postgres + migrations\\nRLS tenant isolation)]
+  GW --> MCP[MCP Hub\\nmcp-config.json]
+  Kafka --> AI[FastAPI AI Service\\nservices/ai/main.py]
+  AI --> Routers[health agents fraud seo\\ncart recovery negotiate inventory marketing]
+  Routers --> Crew[CrewAI Agents\\nSupport Logistics Finance]
+  Routers --> Router[HybridAIRouter\\nOllama / Claude / GPT]
+  AI --> RAG[rag/pipeline.py]
+  RAG --> Qdrant[(Qdrant)]
+  AI --> PokemonClient[integrations/pokemon_client.py]
+  PokemonClient --> PokeAPI[PokemonTool :3001]
+  AI --> Decisions[(ai_decisions + audit_log)]
+  Web[React Dashboard\\napps/web] --> GW`,
+
+      pokemon: `flowchart TB
+  Client[React Client\\nPokemon/client] --> Server[Go API Server\\nPokemon/server/main.go]
+  Server --> Routes[routes/routes.go]
+  Routes --> Handlers[handlers/*]
+  Handlers --> Services[services/*]
+  Services --> Stores[store/*]
+  Stores --> DB[(Postgres\\nusers watchlists alerts inventory cards listings deals shows)]
+  Services --> Redis[(Redis cache)]
+  Server --> SSE[SSE Manager\\n/api/stream]
+  Server --> Rabbit[(RabbitMQ listings queue)]
+  Rabbit --> Worker[notification_worker.go]
+  Worker --> DB
+  Worker --> SSE
+  APIConsumer[api-consumer FastAPI] --> Watchlist[/GET /api/internal/watchlist-names/]
+  Watchlist --> Server
+  APIConsumer --> Ebay[eBay API]
+  APIConsumer --> TCG[TCGdex / TCGplayer data]
+  APIConsumer --> Rabbit
+  Scraper[Go Playwright Scraper] --> Facebook[Facebook Marketplace]
+  Scraper --> Mercari[Mercari]
+  Scraper --> Rabbit
+  Analytics[Analytics Engine scheduler] --> DB
+  Analytics --> Trend[TrendAnalyzer]
+  Analytics --> Deal[DealFinder]
+  Prometheus --> Server
+  Promtail --> DockerLogs[Docker container logs]
+  Promtail --> Loki
+  Grafana --> Prometheus
+  Grafana --> Loki`,
+
+      events: `sequenceDiagram
+  participant S as Shopify
+  participant G as NexusOS Gateway
+  participant K as Kafka
+  participant A as NexusOS AI
+  participant P as PokemonTool API
+  participant R as RabbitMQ
+  participant C as Pokemon API Consumer
+  participant W as Notification Worker
+  participant B as Browser
+
+  S->>G: Webhook orders/products/inventory/customers
+  G->>G: Verify HMAC + merchant context
+  G->>K: Publish shopify.events
+  K->>A: Consume event
+  A->>P: Ask for card price/trend/deal context when needed
+  A->>A: Fraud/SEO/cart/agent decision
+  A->>G: Return API response or enqueue approval
+  C->>P: GET /api/internal/watchlist-names
+  C->>C: Scan eBay + TCG data
+  C->>R: Publish normalized listing
+  R->>W: Consume listing
+  W->>P: Store alert / update DB
+  W->>B: Push SSE alert`,
+
+      data: `erDiagram
+  NEXUS_MERCHANTS ||--o{ NEXUS_ORDERS : owns
+  NEXUS_MERCHANTS ||--o{ NEXUS_CUSTOMERS : owns
+  NEXUS_MERCHANTS ||--o{ NEXUS_PRODUCTS : owns
+  NEXUS_MERCHANTS ||--o{ NEXUS_INVENTORY_LEVELS : owns
+  NEXUS_MERCHANTS ||--o{ NEXUS_SUPPORT_TICKETS : owns
+  NEXUS_MERCHANTS ||--o{ NEXUS_APPROVAL_QUEUE : gates
+  NEXUS_MERCHANTS ||--o{ NEXUS_AI_DECISIONS : logs
+  NEXUS_MERCHANTS ||--o{ NEXUS_AUDIT_LOG : audits
+  POKEMON_USERS ||--o{ API_KEYS : owns
+  POKEMON_USERS ||--o{ WATCHLISTS : tracks
+  POKEMON_USERS ||--o{ ALERTS : receives
+  POKEMON_USERS ||--o{ INVENTORY : owns
+  WATCHLISTS ||--o{ ALERTS : triggers
+  CARDS ||--o{ PRICE_HISTORY : has
+  CARDS ||--o{ DEALS : produces
+  SHOWS ||--o{ POKEMON_USERS : near`,
+
+      folders: `flowchart TB
+  Root[shopify/]
+  Root --> Readme[README.md\\nproject bible]
+  Root --> Compose[docker-compose.yml\\nNexusOS infra]
+  Root --> Apps[apps/web\\nReact merchant dashboard]
+  Root --> Services[services]
+  Services --> Gateway[services/gateway\\nGo API Gateway]
+  Services --> AI[services/ai\\nPython AI service]
+  Root --> Schemas[schemas\\nA2A schema]
+  Root --> Config[config/temporal\\nTemporal config]
+  Root --> Pokemon[Pokemon\\nseparate PokemonTool stack]
+  Pokemon --> PClient[client\\nReact dashboard]
+  Pokemon --> PServer[server\\nGo API]
+  Pokemon --> PServices[services]
+  PServices --> Consumer[api-consumer\\nFastAPI ingestion]
+  PServices --> Analytics[analytics-engine\\nPython scheduler]
+  PServices --> Scraping[scraping-service\\nGo Playwright]
+  Pokemon --> DB[database\\nSQL migrations + seeds]
+  Pokemon --> PScripts[scripts\\nops/test/reporting]
+  Pokemon --> Observability[grafana + prometheus/loki config]
+  Root --> Infra[infra\\nlearning lab + scripts]
+  Root --> Mastery[future_standard_mastery\\nlearning roadmap]
+  Root --> Scripts[scripts\\nNexusOS helpers]`
+    };
+
+    mermaid.initialize({ startOnLoad: false, securityLevel: "loose", theme: "default" });
+
+    const target = document.getElementById("diagramTarget");
+    const source = document.getElementById("diagramSource");
+    const select = document.getElementById("diagramSelect");
+
+    async function renderDiagram(name) {
+      const code = diagrams[name];
+      source.textContent = code;
+      target.removeAttribute("data-processed");
+      target.textContent = code;
+      await mermaid.run({ nodes: [target] });
+    }
+
+    select.addEventListener("change", () => renderDiagram(select.value));
+    renderDiagram(select.value);
+
+    document.getElementById("copyDiagram").addEventListener("click", async () => {
+      await navigator.clipboard.writeText(diagrams[select.value]);
+    });
+
+    document.getElementById("openLive").addEventListener("click", () => {
+      const code = diagrams[select.value];
+      const payload = btoa(unescape(encodeURIComponent(JSON.stringify({ code, mermaid: { theme: "default" } }))));
+      window.open("https://mermaid.live/edit#" + payload, "_blank", "noopener,noreferrer");
+    });
+
+    const search = document.getElementById("search");
+    const searchable = Array.from(document.querySelectorAll("[data-search], .service, .note, tr"));
+    search.addEventListener("input", () => {
+      const q = search.value.trim().toLowerCase();
+      searchable.forEach((el) => {
+        const hit = !q || el.textContent.toLowerCase().includes(q);
+        el.style.display = hit ? "" : "none";
+      });
+    });
+
+    const links = Array.from(document.querySelectorAll("nav a"));
+    const sections = links.map((link) => document.querySelector(link.getAttribute("href")));
+    window.addEventListener("scroll", () => {
+      const y = window.scrollY + 180;
+      let current = sections[0];
+      sections.forEach((section) => {
+        if (section && section.offsetTop <= y) current = section;
+      });
+      links.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === "#" + current.id));
+    });
+  </script>
+</body>
+</html>

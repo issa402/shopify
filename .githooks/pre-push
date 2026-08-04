@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# This hook blocks large tracked files before Git uploads them to GitHub.
+set -euo pipefail
+
+# Run from the repository root no matter where the push command starts.
+cd "$(git rev-parse --show-toplevel)"
+
+# Delegate the actual size logic to the tracked script so it is reviewable.
+scripts/check-large-files.sh --pre-push

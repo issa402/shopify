@@ -1,87 +1,108 @@
 import {
-  Page, Layout, LegacyCard, Button, Text, Badge, EmptyState,
-  BlockStack, InlineStack, Select, TextField, Divider, Box,
+  Page, Layout, Card, Button, Text, Badge,
+  BlockStack, InlineStack, InlineGrid, Select, TextField, Divider, Box, Banner, Spinner,
 } from '@shopify/polaris'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { apiGet, apiPost } from '../api'
 
 interface WorkflowRule {
   id: string
   name: string
+  description: string
   trigger: string
-  condition: string
-  action: string
-  status: 'active' | 'paused'
-  runs: number
+  conditions: Array<{ expression?: string }> | null
+  actions: Array<{ command?: string }> | null
+  active: boolean
+  run_count: number
 }
 
-const sampleRules: WorkflowRule[] = [
-  {
-    id: 'wf_001',
-    name: 'VIP Order Alert',
-    trigger: 'order.created',
-    condition: 'order.total > 500 AND customer.ltv_segment == "vip"',
-    action: 'slack.notify(#vip-orders) + support.assign_priority(high)',
-    status: 'active',
-    runs: 47,
-  },
-  {
-    id: 'wf_002',
-    name: 'Low Inventory Alert',
-    trigger: 'inventory.below_reorder_point',
-    condition: 'inventory.available < reorder_point',
-    action: 'logistics_agent.draft_purchase_order() + slack.notify(#ops)',
-    status: 'active',
-    runs: 12,
-  },
-  {
-    id: 'wf_003',
-    name: 'Refund Win-Back',
-    trigger: 'refund.processed',
-    condition: 'customer.orders_count > 2',
-    action: 'marketing.send_winback_email(discount=10%)',
-    status: 'paused',
-    runs: 88,
-  },
-]
+interface WorkflowResponse {
+  setup_required?: boolean
+  workflows?: WorkflowRule[]
+}
 
 export default function Workflows() {
-  const [rules, setRules] = useState(sampleRules)
+  const [rules, setRules] = useState<WorkflowRule[]>([])
   const [showBuilder, setShowBuilder] = useState(false)
+  const [draftName, setDraftName] = useState('')
+  const [draftTrigger, setDraftTrigger] = useState('order.created')
+  const [draftCondition, setDraftCondition] = useState('')
+  const [draftAction, setDraftAction] = useState('')
+  const [setupRequired, setSetupRequired] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
 
-  const toggleStatus = (id: string) => {
-    setRules(r => r.map(rule =>
-      rule.id === id
-        ? { ...rule, status: rule.status === 'active' ? 'paused' : 'active' }
-        : rule
-    ))
+  const loadWorkflows = () => {
+    setLoading(true)
+    apiGet<WorkflowResponse>('/workflows')
+      .then(data => {
+        setSetupRequired(Boolean(data.setup_required))
+        setRules(data.workflows || [])
+      })
+      .catch(err => setError(err instanceof Error ? err.message : 'Workflow API failed'))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(loadWorkflows, [])
+
+  const toggleStatus = async (id: string) => {
+    await apiPost<{ active: boolean }>(`/workflows/${id}/toggle`)
+    loadWorkflows()
+  }
+
+  const saveWorkflow = async () => {
+    const name = draftName.trim()
+    const action = draftAction.trim()
+    if (!name || !action) return
+
+    await apiPost('/workflows', {
+      name,
+      trigger: draftTrigger,
+      condition: draftCondition.trim() || 'always',
+      action,
+    })
+    setDraftName('')
+    setDraftTrigger('order.created')
+    setDraftCondition('')
+    setDraftAction('')
+    setShowBuilder(false)
+    loadWorkflows()
   }
 
   return (
     <Page
       title="Workflow Automator"
-      subtitle="Build If-This-Then-That rules that connect your entire business"
-      primaryAction={{ content: '+ New Workflow', onAction: () => setShowBuilder(true) }}
+      subtitle="Database-backed automation rules"
+      primaryAction={{ content: '+ New Workflow', onAction: () => setShowBuilder(true), disabled: setupRequired }}
     >
       <Layout>
+        {error && <Layout.Section><Banner tone="critical"><Text as="p">{error}</Text></Banner></Layout.Section>}
+        {setupRequired && <Layout.Section><Banner tone="warning"><Text as="p">Install a Shopify merchant before creating workflow rules.</Text></Banner></Layout.Section>}
+        {loading && <Layout.Section><Box padding="500"><Spinner accessibilityLabel="Loading workflows" /></Box></Layout.Section>}
+
+        {!loading && rules.length === 0 && !showBuilder && (
+          <Layout.Section>
+            <Card>
+              <Text as="p" tone="subdued">No workflow rules are stored yet.</Text>
+            </Card>
+          </Layout.Section>
+        )}
+
         {rules.map(rule => (
           <Layout.Section key={rule.id}>
-            <LegacyCard sectioned>
+            <Card>
               <BlockStack gap="300">
                 <InlineStack align="space-between" blockAlign="center">
                   <InlineStack gap="200" blockAlign="center">
-                    <Badge tone={rule.status === 'active' ? 'success' : 'subdued'}>
-                      {rule.status === 'active' ? '● Active' : '○ Paused'}
+                    <Badge tone={rule.active ? 'success' : undefined}>
+                      {rule.active ? 'Active' : 'Paused'}
                     </Badge>
                     <Text variant="headingMd" as="h2">{rule.name}</Text>
                   </InlineStack>
                   <InlineStack gap="200">
-                    <Text variant="bodySm" tone="subdued" as="span">{rule.runs} runs</Text>
-                    <Button
-                      variant="plain"
-                      size="slim"
-                      onClick={() => toggleStatus(rule.id)}
-                    >
-                      {rule.status === 'active' ? 'Pause' : 'Activate'}
+                    <Text variant="bodySm" tone="subdued" as="span">{rule.run_count} runs</Text>
+                    <Button variant="plain" size="slim" onClick={() => toggleStatus(rule.id)}>
+                      {rule.active ? 'Pause' : 'Activate'}
                     </Button>
                   </InlineStack>
                 </InlineStack>
@@ -95,25 +116,24 @@ export default function Workflows() {
                   </Box>
                   <Box>
                     <Text variant="bodySm" tone="subdued" as="p">CONDITION</Text>
-                    <Text variant="bodySm" as="p"
-                      tone="info">{rule.condition}
-                    </Text>
+                    <Text variant="bodySm" as="p" tone="subdued">{rule.conditions?.[0]?.expression || 'always'}</Text>
                   </Box>
                   <Box>
-                    <Text variant="bodySm" tone="subdued" as="p">ACTIONS</Text>
-                    <Text variant="bodySm" as="p">{rule.action}</Text>
+                    <Text variant="bodySm" tone="subdued" as="p">ACTION</Text>
+                    <Text variant="bodySm" as="p">{rule.actions?.[0]?.command || 'No action configured'}</Text>
                   </Box>
                 </InlineGrid>
               </BlockStack>
-            </LegacyCard>
+            </Card>
           </Layout.Section>
         ))}
 
         {showBuilder && (
           <Layout.Section>
-            <LegacyCard title="New Workflow" sectioned>
+            <Card>
               <BlockStack gap="400">
-                <TextField label="Workflow Name" autoComplete="off" value="" onChange={() => {}} />
+                <Text as="h2" variant="headingMd">New Workflow</Text>
+                <TextField label="Workflow Name" autoComplete="off" value={draftName} onChange={setDraftName} />
                 <Select
                   label="Trigger Event"
                   options={[
@@ -123,17 +143,17 @@ export default function Workflows() {
                     { label: 'Support Ticket Opened', value: 'ticket.created' },
                     { label: 'Customer Churned', value: 'customer.churn_risk' },
                   ]}
-                  value="order.created"
-                  onChange={() => {}}
+                  value={draftTrigger}
+                  onChange={setDraftTrigger}
                 />
-                <TextField label="Condition (optional)" autoComplete="off" value="" onChange={() => {}} placeholder="order.total > 500" />
-                <TextField label="Action" autoComplete="off" value="" onChange={() => {}} placeholder="slack.notify(#ops)" />
+                <TextField label="Condition (optional)" autoComplete="off" value={draftCondition} onChange={setDraftCondition} placeholder="order.total > 500" />
+                <TextField label="Action" autoComplete="off" value={draftAction} onChange={setDraftAction} placeholder="slack.notify(#ops)" />
                 <InlineStack gap="200">
-                  <Button variant="primary">Save Workflow</Button>
+                  <Button variant="primary" onClick={saveWorkflow}>Save Workflow</Button>
                   <Button variant="plain" onClick={() => setShowBuilder(false)}>Cancel</Button>
                 </InlineStack>
               </BlockStack>
-            </LegacyCard>
+            </Card>
           </Layout.Section>
         )}
       </Layout>

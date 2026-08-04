@@ -77,7 +77,7 @@ import (
 	"io"  // io.ReadAll, io.LimitReader — for reading the HTTP request body
 	"log" // standard logging to stderr
 	"net/http"
-	"os"  // os.Getenv for reading environment variables
+	"os" // os.Getenv for reading environment variables
 	"time"
 
 	// gin: fast HTTP router framework for Go.
@@ -88,7 +88,7 @@ import (
 	// go-redis: Redis client library for Go.
 	// Redis is used here for idempotency key storage.
 	// Each processed webhook ID is stored in Redis with a 24h TTL.
-	"github.com/go-redis/redis/v9"
+	"github.com/redis/go-redis/v9"
 
 	// uuid: generates UUIDs (Universally Unique Identifiers).
 	// Used as fallback if Shopify doesn't send a webhook ID header.
@@ -133,8 +133,9 @@ type Handler struct {
 // NewHandler constructor — creates a fully initialized Handler with all its dependencies.
 //
 // CALLED BY: main.go during startup.
-//   webhookHandler := webhook.NewHandler(db, kafkaProducer)
-//   router.POST("/webhooks/shopify/orders/create", webhookHandler.Handle("orders/create"))
+//
+//	webhookHandler := webhook.NewHandler(db, kafkaProducer)
+//	router.POST("/webhooks/shopify/orders/create", webhookHandler.Handle("orders/create"))
 //
 // The Redis client is initialized HERE (not passed in) for simplicity,
 // because its only config is the REDIS_URL environment variable.
@@ -183,13 +184,16 @@ func NewHandler(db *pgxpool.Pool, k *kafka.Producer) *Handler {
 //
 // WHY USE A CLOSURE?
 // We mount the same handler logic for 9+ different webhook routes:
-//   router.POST("/webhooks/shopify/orders/create",   handler.Handle("orders/create"))
-//   router.POST("/webhooks/shopify/products/update", handler.Handle("products/update"))
+//
+//	router.POST("/webhooks/shopify/orders/create",   handler.Handle("orders/create"))
+//	router.POST("/webhooks/shopify/products/update", handler.Handle("products/update"))
+//
 // Each call creates a NEW handler function with a different `topic` baked in.
 // Without closures, we'd need 9 identical functions differing only in the topic string.
 //
 // PERFORMANCE TARGET: respond to Shopify in <50ms (p99)
-//   Breakdown: read body ~1ms + HMAC ~0.5ms + Redis ~2ms + Kafka ~5ms = ~8.5ms typical.
+//
+//	Breakdown: read body ~1ms + HMAC ~0.5ms + Redis ~2ms + Kafka ~5ms = ~8.5ms typical.
 func (h *Handler) Handle(topic string) gin.HandlerFunc {
 	// Return an anonymous function with gin.HandlerFunc signature: func(c *gin.Context)
 	// gin.Context wraps the underlying http.Request/http.ResponseWriter and adds helpers.
@@ -284,11 +288,11 @@ func (h *Handler) Handle(topic string) gin.HandlerFunc {
 		//   - when we received it (for latency tracking, ordering)
 		// Downstream Python consumers read this envelope, not raw Shopify JSON.
 		event := KafkaEvent{
-			ID:         shopifyEventID,       // unique delivery ID from Shopify
-			Topic:      topic,                // e.g., "orders/create"
-			ShopDomain: shopDomain,           // e.g., "mystore.myshopify.com"
-			ReceivedAt: time.Now().UTC(),     // UTC timestamp of receipt
-			Payload:    payload,              // the raw Shopify event data (order, product, etc.)
+			ID:         shopifyEventID,   // unique delivery ID from Shopify
+			Topic:      topic,            // e.g., "orders/create"
+			ShopDomain: shopDomain,       // e.g., "mystore.myshopify.com"
+			ReceivedAt: time.Now().UTC(), // UTC timestamp of receipt
+			Payload:    payload,          // the raw Shopify event data (order, product, etc.)
 		}
 
 		// json.Marshal produces a JSON byte slice from our Go struct.
@@ -331,9 +335,9 @@ func (h *Handler) Handle(topic string) gin.HandlerFunc {
 		// Respond 200 OK with accept confirmation.
 		// Shopify requires this within 5 seconds. Our typical latency is <50ms.
 		c.JSON(http.StatusOK, gin.H{
-			"status":     "accepted",        // tells our monitoring: event was queued
-			"event_id":   shopifyEventID,    // echoed back for debugging/logging
-			"latency_ms": duration,          // round-trip latency for monitoring
+			"status":     "accepted",     // tells our monitoring: event was queued
+			"event_id":   shopifyEventID, // echoed back for debugging/logging
+			"latency_ms": duration,       // round-trip latency for monitoring
 		})
 	}
 }
@@ -341,29 +345,31 @@ func (h *Handler) Handle(topic string) gin.HandlerFunc {
 // verifyHMAC verifies that a Shopify webhook signature is valid.
 //
 // HOW HMAC WORKS (simplified):
-//   Given: a SECRET key and a MESSAGE
-//   HMAC = Hash(SECRET ⊕ pad1 || Hash(SECRET ⊕ pad2 || MESSAGE))
-//   This produces a unique "fingerprint" of the message that only someone
-//   with the SECRET can reproduce.
+//
+//	Given: a SECRET key and a MESSAGE
+//	HMAC = Hash(SECRET ⊕ pad1 || Hash(SECRET ⊕ pad2 || MESSAGE))
+//	This produces a unique "fingerprint" of the message that only someone
+//	with the SECRET can reproduce.
 //
 // SHOPIFY'S PROCESS:
-//   1. Takes the raw JSON body bytes
-//   2. Computes HMAC-SHA256 using SHOPIFY_WEBHOOK_SECRET as the key
-//   3. Base64-encodes the 32-byte HMAC result
-//   4. Sends it in the "X-Shopify-Hmac-SHA256" header
+//  1. Takes the raw JSON body bytes
+//  2. Computes HMAC-SHA256 using SHOPIFY_WEBHOOK_SECRET as the key
+//  3. Base64-encodes the 32-byte HMAC result
+//  4. Sends it in the "X-Shopify-Hmac-SHA256" header
 //
 // OUR VERIFICATION:
-//   1. Take the same raw body (we haven't modified it)
-//   2. Compute HMAC-SHA256 with the SAME secret (from our .env)
-//   3. Base64-encode it
-//   4. Compare to the header value
+//  1. Take the same raw body (we haven't modified it)
+//  2. Compute HMAC-SHA256 with the SAME secret (from our .env)
+//  3. Base64-encode it
+//  4. Compare to the header value
 //
 // TIMING ATTACK PREVENTION:
-//   Normal string comparison: `expected == signature`
-//   This exits as soon as it finds the FIRST different character.
-//   An attacker can measure HOW LONG the comparison takes to figure out
-//   how many characters their fake signature has correct.
-//   `hmac.Equal` compares ALL bytes regardless → constant time → no timing leak.
+//
+//	Normal string comparison: `expected == signature`
+//	This exits as soon as it finds the FIRST different character.
+//	An attacker can measure HOW LONG the comparison takes to figure out
+//	how many characters their fake signature has correct.
+//	`hmac.Equal` compares ALL bytes regardless → constant time → no timing leak.
 func verifyHMAC(body []byte, signature string) bool {
 	secret := os.Getenv("SHOPIFY_WEBHOOK_SECRET")
 	if secret == "" {
@@ -435,8 +441,10 @@ func (h *Handler) isProcessed(ctx context.Context, key string) bool {
 // markProcessed stores the event ID in Redis so future duplicates can be detected.
 //
 // Redis SET with TTL:
-//   SET key value EX seconds
-//   SET "webhook:abc123" "1" EX 86400
+//
+//	SET key value EX seconds
+//	SET "webhook:abc123" "1" EX 86400
+//
 // After 86400 seconds (24 hours), Redis automatically deletes the key.
 // WHY 24 HOURS? Shopify retries webhooks for up to 48 hours, BUT:
 //   - After 24 hours, the AI processing window has passed anyway
@@ -467,9 +475,10 @@ func (h *Handler) markProcessed(ctx context.Context, key string) {
 //   - A consistent top-level structure we control
 //
 // By wrapping the raw payload in our envelope, Python consumers can always do:
-//   event.topic → "orders/create"  (no need to inspect the payload to guess the type)
-//   event.shop_domain → "mystore.myshopify.com"
-//   event.payload → the raw Shopify order/product/customer object
+//
+//	event.topic → "orders/create"  (no need to inspect the payload to guess the type)
+//	event.shop_domain → "mystore.myshopify.com"
+//	event.payload → the raw Shopify order/product/customer object
 //
 // STRUCT TAGS ("json:\"id\""):
 // Go uses struct tags to control how fields serialize to/from JSON.
